@@ -1,0 +1,433 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Arcana Resonatia</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;700&display=swap">
+<style>
+:root{--bg:#16221c;--pn:#22332a;--tx:#ece3c8;--mu:#a3ad9c;--ac:#d4a94a;--bd:#3d5446;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:light){:root{--bg:#e8e0c8;--pn:#f5efdc;--tx:#241e12;--mu:#675f4c;--ac:#8a5b0c;--bd:#c6bb98}}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 Spectral,Georgia,serif}
+button,input,select,textarea{font:inherit;color:inherit;background:var(--pn);border:1px solid var(--bd);border-radius:5px;padding:4px 8px}
+button{cursor:pointer}button:hover:not(:disabled){border-color:var(--ac)}button:disabled{opacity:.4;cursor:default}:focus-visible{outline:2px solid var(--ac)}
+h1{margin:0;font-size:22px;letter-spacing:.04em}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#setup{display:grid;grid-template-columns:minmax(300px,1fr) minmax(300px,1fr);gap:12px;padding:12px;height:100%}
+#cfg,#pvw{overflow:auto;background:var(--pn);border:1px solid var(--bd);border-radius:8px;padding:12px}
+.tab.on{background:var(--ac);color:#111}label{display:inline-block;margin:3px 10px 3px 0}input[type=number]{width:72px}input.s{width:52px;margin:1px}
+#game{display:grid;grid-template-columns:1fr 340px;height:100%}#bd{touch-action:none;overflow:hidden;background:radial-gradient(#2c4a3a,#14241c)}#bd svg{width:100%;height:100%;min-height:380px}
+#side{overflow:auto;padding:8px;background:var(--pn);border-left:1px solid var(--bd)}.card{border:1px solid var(--bd);border-radius:6px;padding:6px 8px;margin:6px 0}
+#log{font-size:12px;max-height:200px;overflow:auto;color:var(--mu)}#modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:9}
+#modal[hidden]{display:none}#dice{position:fixed;top:6px;left:6px;z-index:8;background:var(--pn);border:1px solid var(--ac);border-radius:8px;padding:4px 6px;font-size:12px;display:flex;gap:4px;align-items:center;max-width:60vw;flex-wrap:wrap}.die{display:inline-flex;flex-direction:column;align-items:center;min-width:28px;border:1px solid var(--ac);border-radius:6px;padding:1px 3px;font-weight:700}.die small{font-size:9px;font-weight:400;color:var(--mu)}
+#modal>div{background:var(--pn);border:1px solid var(--ac);border-radius:8px;padding:14px;max-width:420px;max-height:80%;overflow:auto}#modal button{display:block;width:100%;margin:4px 0;text-align:left}
+.bar{height:8px;background:#0005;border-radius:4px}.bar i{display:block;height:100%;background:#c0392b;border-radius:4px}
+@media(max-width:760px){#setup,#game{grid-template-columns:1fr;height:auto}#game #bd{height:60vh}}
+</style></head><body><div id="app"></div><div id="modal" hidden></div>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);const cur=()=>G&&G.pl[G.ord[G.ti]];let cam={x:0,y:0,z:1},moved=0;
+let rng,C,T={},R=5,MB={},G=null,tab='Match';
+const mk=s=>{let a=s>>>0;const f=()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};f.g=()=>a;f.s=v=>{a=v};return f};
+let TR=[],trD=0;const trR=()=>{if(trD)return;trD=1;Promise.resolve().then(()=>{trD=0;let e=document.getElementById('dice');if(!e){e=document.createElement('div');e.id='dice';document.body.appendChild(e)}e.innerHTML='<b>Dice</b> '+TR.slice(-8).map(r=>`<span class=die title="d${r[0]} rolled ${r[1]}"><small>d${r[0]}</small>${r[1]}</span>`).join('')})};
+const d=n=>{const v=1+Math.floor(rng()*n);TR.push([n,v]);if(TR.length>200)TR.shift();trR();return v},dn=(c,n)=>{let s=0;for(let i=0;i<c;i++)s+=d(n);return s},ri=n=>Math.floor(rng()*n),pk=a=>a[ri(a.length)];
+const wpick=w=>{let t=w.reduce((a,b)=>a+b,0)*rng();for(let i=0;i<w.length;i++){t-=w[i];if(t<0)return i}return 0};
+const EL=['Aquis','Pyris','Aero','Litho','Fulgo','Luxis','Noctis'],EC=['#4aa3e0','#e0553a','#9ad7c4','#b08f5a','#eed33a','#fff3a8','#9a66d6'];
+const RAR=['Common','Uncommon','Rare','Epic','Legendary'],RC=['#9a9a9a','#4caf50','#3d8bff','#a64dff','#ff9a1f'];
+const BIO=['Fulgo','Noctis','Aquis','Litho','Pyris','Luxis','Aero','Boss Sanctum'],BC=['#a88f1a','#5a3a8a','#2f6fa8','#85663a','#a8402a','#c2ae5a','#4f9c88','#2a2a33'];
+/* Biome index order is unchanged (0 Fulgo, 1 Noctis, 2 Aquis, 3 Litho, 4 Pyris, 5 Luxis, 6 Aero, 7 Boss Sanctum) so older saves and set biomes still load. Specials = Noctis + Luxis; basics = the other five. */
+const BAS=[0,2,3,4,6],SPE=[1,5];
+const BT=[[9,13,16,18],[7,12,17,18],[6,10,12,18],[8,13,17,19],[6,12,15,19],[8,12,16,18],[7,11,14,18]],BE=[[2,3],[5,6],[0,4],[3,1],[1,4],[0,2],[2,4]];
+const GB=[['Fist/Dagger','w',0,0,0,0,0,'d'],['Sword/Spear/Club','w',1,1,0,0,0,'s'],['Pole Arm/Great Sword','w',2,2,0,0,2,'s'],['Long Bow','w',3,5,0,0,0,'d'],['Short Bow','w',2,4,0,0,0,'d'],['Recurve Bow','w',3,3,0,0,0,'d'],['Wand/Tome','w',2,2,0,0,0,'c'],['Staff','w',4,4,0,0,0,'c'],['Small Shield','s',0,0,1,0,0],['Medium Shield','s',0,0,2,1,0],['Large Shield','s',0,0,3,2,0],['Light Armor','a',0,0,1,0,0],['Medium Armor','a',0,0,2,1,0],['Heavy Armor','a',0,0,2,2,0]];
+const AW=['Keen','Reaching','Vampiric','Sundering','Lucky','Charged'],AA=['Fleet','Warded','Thorned','Stalwart','Featherlight','Recuperating'];
+const CN=['Healing Potion','Essence Vial','Stride Tonic','Ironskin Tonic','Might Draught','Cleansing Salve','Warding Philter','Volatile Flask','Recall Sigil','Phoenix Ember'];
+const CL={Fighter:{m:[2,1,0,0,0,0],d:6},Mage:{m:[-1,0,0,2,0,0],d:6},Rogue:{m:[0,-1,2,0,0,0],d:8}},SN=['STR','CON','DEX','INT','WIS','CHAR'];
+const TH=[0,300,900,2700,6500,14000,23000,34000,48000,64000,85000,100000,120000,140000,165000,195000,225000,265000,305000,355000],PBA=[2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6];
+const SRT='300,600,900,1350,1800,2700,3600,5400,7200,10800;300,600,800,1200,1600,2400,3200,4800,6400,9600;300,500,750,1000,1500,2250,3000,4500,6000,9000;300,450,600,900,1200,1800,2700,3600,5400,7200;263,350,525,700,1050,1400,2100,3150,4200,6300;200,300,400,600,800,1200,1600,2400,3600,4800;0,225,338,450,675,900,1350,1800,2700,4050;0,0,250,375,500,750,1000,1500,2000,3000;0,0,0,275,413,550,825,1100,1650,2200;0,0,0,0,300,450,600,900,1200,1800;0,0,0,0,0,325,488,650,975,1300;0,0,0,0,0,0,350,525,700,1050;0,0,0,0,0,0,0,375,563,750;0,0,0,0,0,0,0,0,400,600;0,0,0,0,0,0,0,0,0,425;0,0,0,0,0,0,0,0,0,0'.split(';').map(r=>r.split(',').map(Number));
+const PR={1:225,2:225,3:450,4:1350,5:2850,6:5625,7:6750,8:8250,9:10500,11:12000,12:15750,13:11250,14:15000,15:15000,16:18750,17:22500,18:22500,19:30000,20:30000},CP=[150,400,1000,2500];
+// Skills: [app,name,tier,cost,impl]. impl 0 = stub (listed, not yet playable)
+const SK=[['Cana','Arcane Bolt',1,1,{k:'dmg',n:1,s:3,m:2,r:3,a:0}],['Cana','Elemental Burst',2,2,{k:'dmg',n:1,s:3,m:2,r:3,a:1}],['Cana','Conduit Chain',3,2,0],['Cana','Conjure Terrain',4,2,0],['Cana','Cataclysm',5,3,{k:'dmg',n:2,s:3,m:2,r:3,a:2}],['Bhana','Infuse Weapon',1,1,{k:'buf',b:'Infuse'}],['Bhana','Aegis Aura',2,1,{k:'buf',b:'Aegis'}],['Bhana','Elemental Edge',3,2,{k:'buf',b:'Edge'}],['Bhana','Resonant Guard',4,2,{k:'buf',b:'Guard'}],['Bhana','Avatar Form',5,3,0],['Prana','Borrowed Flame',1,2,{k:'dmg',n:1,s:4,m:1,r:2,a:0}],['Prana','Divine Mend',2,2,{k:'heal'}],['Prana','Dual Invocation',3,3,0],['Prana','Sanctuary',4,3,0],['Prana','Judgment',5,4,{k:'dmg',n:2,s:4,m:1,r:2,a:0,ign:1}],['Gana','Call Familiar',1,2,0],['Gana','Twin Call',2,3,0],['Gana','Greater Summon',3,3,0],['Gana','Bonded Beast',4,2,0],['Gana','Colossus',5,4,0]];
+const D={players:2,names:['Ash','Briar','Cinder','Dusk','Ember','Flint'],cls:['Fighter','Mage','Rogue','Fighter','Mage','Rogue'],seed:7,chunkK:1,maxCh:37,depOut:0,bmode:'Random',autoSp:1,cb:{},spk:[],man:{},tileSize:24,skAcq:'both',skP:[500,1200,2500,5000,9000],mobD:1,wallD:1,obsD:1,chestD:1,K:2,lives:3,cap:4,echo:3,rew:.5,shroud:1,affSpawn:1,spawnR:3,sanct:2,mode:'Sentinel',aggroT:2,aggroH:6,leash:3,resp:0,respI:4,storm:0,stormS:6,stormI:3,srM:1,stat10:11000,hit:7,dmg:20,caster:3,shopM:1,gearW:Array(14).fill(1),rar:[10,15,19,23],tier:[0,1,2,3,4],cuts:[6,10,14,17,19],consW:[3,1,1,1,1,1,1,1,1,1],pg:2,pc:4,startSt:1,startSR:0,pSR:[null,null,null,null,null,null],pSt:[[],[],[],[],[],[]],pW:[null,null,null,null,null,null],hpB:20,hpC:4,hpL:5,sk:Object.fromEntries(SK.map(s=>[s[1],!!s[4]]))};
+const SC=[['Match','players','Players (2–6)','n',2,6],['Match','seed','Seed','n'],['Match','K','Boss Keys needed / Mini-Boss lairs','n',1,4],['Match','lives','Lives','n',1,9],['Match','cap','Lives cap','n',1,9],['Match','echo','Echo Trail window','n',1,5],['Match','rew','Rewind HP fraction','n',.1,1],['Match','shroud','Shroud rounds after rewind','n',0,4],['Match','sanct','Sanctuary limit (turns on Spawn)','n',1,9],['Match','storm','Closing Storm','b'],['Match','stormS','Storm starts after round','n',1,30],['Match','stormI','Storm interval (rounds)','n',1,9],
+['Terrain','chunkK','Chunk size: hex radius (0 = 1 tile, 1 = 7, 2 = 19, 3 = 37, 4 = 61 … tiles per chunk; no upper limit)','n',0,0],['Terrain','maxCh','Max chunks (rounded up to a full hexagon: 7, 19, 37, 61, 91…; Boss + 6 spawn chunks + Hex Loader dice, so 37 = 30 dice; no upper limit)','n',7,0],['Terrain','autoSp','Spawn chunks placed automatically at the farthest chunk in each of the six directions (off = mark them by hand in the chunk map editor)','b'],['Terrain','bmode','Biome layout (Random = Spawn/Hex Loader dice · Directional = each side of the map copies its spawn chunk\'s biome)','e',0,0,['Random','Directional']],['Terrain','depOut','Depth direction (0 = Depth rises toward the Boss, for spawns at the rim · 1 = rises outward from the Boss)','n',0,1],['Terrain','tileSize','Tile size (drawing only; no upper limit)','n',4,0],['Terrain','mobD','Mob density ×','n',0,3],['Terrain','wallD','Wall density ×','n',0,3],['Terrain','obsD','Obstacle density ×','n',0,3],['Terrain','chestD','Chest density ×','n',0,3],
+['Monsters','spawnR','Spawn-proximity radius: mobs this close to a Spawn get weaker (0 = off)','n',0,9],['Monsters','mode','Mob behavior','e',0,0,['Sentinel','Territorial','Hunter']],['Monsters','aggroT','Territorial aggro radius','n',1,9],['Monsters','aggroH','Hunter aggro radius','n',1,12],['Monsters','leash','Territorial leash','n',1,9],['Monsters','resp','Mob respawn','b'],['Monsters','respI','Respawn interval','n',1,9],
+['Characters','affSpawn','Spawn in a biome where your Affinity has Advantage over mob elements (1 = on)','n',0,1],['Characters','startSt','Starting stat value (all players, before class bonus)','n',0,20],['Characters','startSR','Starting Soul Resonance (SR) given to every player','n',0,999999],['Characters','hpB','Max HP base','n',1,99],['Characters','hpC','Max HP per CON','n',0,9],['Characters','hpL','HP per level','n',0,20],['Characters','caster','Wand/Staff stat (0 STR…3 INT…4 WIS)','n',0,5],
+['Loot','gearW','Gear spawn weights (14 items, guide order)','a',0,0,GB.map(g=>g[0])],['Loot','rar','Rarity thresholds (Common/Unc/Rare/Epic max)','a'],['Loot','tier','Chest tier bonus per rarity','a'],['Loot','cuts','Chest table cut points','a'],['Loot','consW','Consumable kind weights (10 kinds)','a',0,0,CN],['Loot','pg','Pack gear slots','n',0,9],['Loot','pc','Pack consumable slots','n',0,9],
+['Economy','skAcq','Skill acquisition (levelPick / shop / both)','e',0,0,['both','levelPick','shop']],['Economy','skP','Skill price by tier 1–5 (PROPOSED, not in Guide)','a'],['Economy','srM','SR multiplier','n',0,20],['Economy','shopM','Shop price multiplier','n',0,9],['Economy','stat10','Stat 10 price (unpriced in guide)','n',0,99999],
+['Combat','hit','Hit threshold (2d6)','n',2,12],['Combat','dmg','Damage die size','n',4,100]];
+const PRE={'Guide (v6)':{},'Quick match':{maxCh:19,K:1,srM:2,lives:2,mobD:.7},'Battle Royale':{mode:'Territorial',resp:1,storm:1},'Brutal':{mode:'Hunter',resp:1,lives:2,mobD:1.3}};
+// ---------- generation (§10) ----------
+const DR=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]],kq=k=>k.split(',').map(Number);
+const nb=k=>{const[q,r]=kq(k);return DR.map(a=>(q+a[0])+','+(r+a[1])).filter(x=>T[x])};
+const hd=(a,b)=>{const[q,r]=kq(a),[x,y]=kq(b);return(Math.abs(q-x)+Math.abs(r-y)+Math.abs(q+r-x-y))/2};
+const dep=ring=>Math.floor(6*(C.depOut?ring:R-ring)/(R+1)),ti=x=>x<=C.rar[0]?0:x<=C.rar[1]?1:x<=C.rar[2]?2:x<=C.rar[3]?3:4;
+let AFF=[],SPI=[],CHN=0,CS=7,CH0=[];const bsc=(a,b)=>a>=5?0:BE[b].reduce((s,m)=>s+(beats(a,m)?1:0)-(beats(m,a)?1:0),0);
+const walk=p=>{const o=[];let q=-p,r=p;for(let s=0;s<6;s++)for(let j=0;j<p;j++){o.push([q,r]);q+=DR[s][0];r+=DR[s][1]}return o};
+const WI={},wix=o=>{const p=crOf(o);if(!WI[p])WI[p]=new Map(walk(p).map((x,i)=>[x.join(','),i]));return WI[p].get(o.join(','))};
+const DIRV=u=>[S3*(u[0]+u[1]/2),1.5*u[1]];
+function farSp(rel,n,skip){const U=walk(1),pick=[],used=new Set(skip||[]);for(let i=0;i<U.length&&pick.length<n;i++){const v=DIRV(U[i]);let best=null;for(const o of rel){const k=o.join(',');if(used.has(k))continue;const p=DIRV(o),sc=p[0]*v[0]+p[1]*v[1],rg=crOf(o);if(!best||sc>best.sc+1e-9||(Math.abs(sc-best.sc)<1e-9&&rg>best.rg))best={o,sc,rg,k}}if(best){used.add(best.k);pick.push(best)}}return pick}
+function layout(){const bs=C.boss||[0,0],P=C.players;let rel;
+if(C.on)rel=C.on.map(k=>{const[a,b]=k.split(',').map(Number);return[a-bs[0],b-bs[1]]}).filter(o=>o[0]||o[1]);
+else{const m=Math.max(7,Math.round(C.maxCh)||7);let M=1;while(1+3*M*(M+1)<m)M++;rel=[];for(let p=1;p<=M;p++)rel.push(...walk(p))}
+let sp=[],note='';
+if(C.autoSp==0){const ks=new Set(rel.map(o=>abk(bs,o)));sp=(C.spk||[]).filter(k=>ks.has(k)).map(k=>{const[a,b]=k.split(',').map(Number);return{o:[a-bs[0],b-bs[1]]}});
+if(sp.length<P){const have=sp.length,add=farSp(rel,P-have,sp.map(x=>x.o.join(',')));sp.push(...add.map(x=>({o:x.o})));note='⚠ Only '+have+' spawn chunk(s) marked for '+P+' players: the farthest free chunks were added.'}}
+else sp=farSp(rel,6).map(x=>({o:x.o}));
+const ss=new Set(sp.map(x=>x.o.join(','))),hex=rel.filter(o=>!ss.has(o.join(','))).sort((a,b)=>crOf(a)-crOf(b)||wix(a)-wix(b));
+return{bs,sp,hex,note,ab:o=>abk(bs,o)}}
+let SIM=null,MQ=[],SI=0;
+const stp=(t,ref,note)=>{SIM.c={t,ref,note:note||'',r:[],ln:[],snap:null};SIM.steps.push(SIM.c)},ln=x=>SIM.c.ln.push(x);
+const sn=()=>{SIM.c.snap=Object.keys(T).map(k=>{const t=T[k];return[t.b,t.t,t.sp,t.shop,t.sh,t.lair,t.portal,t.pb,t.mob]})};
+function rl(n,l,g){let v;if(MQ.length){const x=MQ.shift();v=x>=1&&x<=n?x:d(n)}else v=d(n);SIM.c.r.push({n,v,l,g:g||l});return v}
+function rn(n,l,g){if(n<=1)return 1;if(n>20){const a=rl(10,l+' tens',g)-1,b=rl(10,l+' ones',g)-1,p=a*10+b||100;return((p-1)%n)+1}
+const die=[4,6,8,10,12,20].find(x=>x>=n);for(;;){const v=rl(die,l,g);if(v<=n)return v;SIM.c.r[SIM.c.r.length-1].x=1}}
+const crOf=o=>Math.max(Math.abs(o[0]),Math.abs(o[1]),Math.abs(o[0]+o[1]));
+function gen(){rng=mk(C.seed);SZ=C.tileSize||24;TR=[];T={};MB={};SIM={steps:[],c:null};MQ=String(C.manual||'').split(/[\s,]+/).map(Number).filter(x=>x>0);
+const kr=Math.max(0,Math.round(C.chunkK)||0),cs=3*kr*(kr+1)+1,P=C.players,A0=kr+1,A1=kr,B0=-kr,B1=2*kr+1,LY=layout(),bs=LY.bs,pb=ch=>{const v=(C.cb||{})[LY.ab(ch.o)];return v==null||v<0||v>6?-1:Math.round(v)};
+const CH=[{o:[0,0],cr:0,b:7,nm:'Boss'},...LY.sp.map((x,i)=>({o:x.o,cr:crOf(x.o),b:-1,nm:'S'+(i+1),isS:1,sl:i+1})),...LY.hex.map((o,i)=>({o:o,cr:crOf(o),b:-1,nm:'H'+(i+1)}))];CHN=CH.length;CS=cs;CH0=CH.filter(c=>c.isS);
+const offs=[];for(let a=-kr;a<=kr;a++)for(let b=Math.max(-kr,-a-kr);b<=Math.min(kr,-a+kr);b++)offs.push([a,b]);
+const ang=o=>(Math.atan2(1.5*o[1],S3*(o[0]+o[1]/2))+2*Math.PI)%(2*Math.PI);offs.sort((a,b)=>crOf(a)-crOf(b)||ang(a)-ang(b));
+let n=0;CH.forEach((ch,ci)=>{ch.id=ci;ch.tl=[];const cq=ch.o[0]*A0+ch.o[1]*B0,cr=ch.o[0]*A1+ch.o[1]*B1;ch.key=cq+','+cr;
+for(const[a,b]of offs){const q=cq+a,r=cr+b,k=q+','+r;if(T[k])continue;T[k]={q,r,ring:Math.max(Math.abs(q),Math.abs(r),Math.abs(q+r)),i:n++,w:0,b:ch.b,t:'U',ch:ci,cr:ch.cr,cn:ch.nm,sl:ch.sl||0};ch.tl.push(k)}});
+R=Math.max(1,...Object.values(T).map(t=>t.ring));
+stp('Layout','§10.1–10.2',`Chunk = ${cs} tiles. S1… = spawn chunks (${C.autoSp==0?'marked by hand':'the farthest chunk in each of the six directions: S1 bottom-left, S2 bottom-right, S3 right, S4 top-right, S5 top-left, S6 left'}), H1… = Hex Loader dice, ring by ring from the Boss outward.`);ln(`${CH.length} chunks (Boss + ${LY.sp.length} spawn + ${LY.hex.length} Hex Loader dice) × ${cs} tiles = ${n} tiles. Farthest tile is ${R} from the Boss.`);if(LY.note)ln(LY.note);
+if(LY.hex.length>30)ln('⚠ More than 30 Hex Loader dice: beyond the physical kit.');if(C.on)ln('GM-edited layout in use (Boss at cell '+bs+').');sn();
+stp('1. Affinities','§2.3','Element Die d8 per player; 8 = Wild (GM/player chooses; shown here as a d7 pick).');
+for(let k=0;k<P;k++){const v=rl(8,C.names[k]+' Element Die','P'+(k+1));if(v<8)AFF[k]=v-1;else{const w=rl(7,C.names[k]+' Wild pick','P'+(k+1));AFF[k]=w-1}ln(C.names[k]+' → '+EL[AFF[k]])}AFF.length=P;sn();
+const rb=(nm)=>{const v=rl(6,nm+' biome die',nm);if(v<6){ln(nm+' → '+BIO[BAS[v-1]]);return BAS[v-1]}const c=rl(2,nm+' coin (1 = heads Noctis · 2 = tails Luxis)',nm);ln(nm+' → special: '+(c==1?'Noctis':'Luxis'));return c==1?SPE[0]:SPE[1]},setB=ch=>ch.tl.forEach(k=>{T[k].b=ch.b;T[k].bs=ch.src});
+stp('2. Spawn Loader','§10.1, §10.3','One d6 per spawn chunk, in slot order. 1–5 basic biome (1 Fulgo, 2 Aquis, 3 Litho, 4 Pyris, 5 Aero); 6 = coin for Noctis (heads) / Luxis (tails). No two spawn chunks share a biome: a die that repeats a biome is rerolled, and once one special is placed a later 6 gives the other special with no coin.');
+const SU=new Set(),SPC=CH.filter(c=>c.isS),rs=nm=>{const free=[0,1,2,3,4,5,6].filter(x=>!SU.has(x));if(!free.length){ln(nm+': all 7 biomes are already in spawn chunks, so repeats are allowed');return rb(nm)}
+for(let g=0;;g++){const v=rl(6,nm+' biome die',nm),n0=SIM.c.r.length-1;let b=-1;
+if(v<6)b=BAS[v-1];else{const fr=SPE.filter(x=>!SU.has(x));if(fr.length==2){const c=rl(2,nm+' coin (1 = heads Noctis · 2 = tails Luxis)',nm);b=c==1?SPE[0]:SPE[1]}else if(fr.length==1){b=fr[0];ln(nm+' → special: only '+BIO[b]+' is still free (no coin)')}}
+if(g>200)b=free[0];
+if(b>=0&&!SU.has(b)){SU.add(b);ln(nm+' → '+BIO[b]);return b}
+ln(nm+' → '+(b>=0?BIO[b]+' is already in a spawn chunk':'special, but both specials are already placed')+': reroll');for(let i=n0;i<SIM.c.r.length;i++)SIM.c.r[i].x=1}};
+SPC.forEach(ch=>{const v=pb(ch);if(v>=0){ch.b=v;ch.src='set';SU.add(v);ln(ch.nm+' → '+BIO[v]+' (set by the GM)')}});
+SPC.filter(c=>c.b<0).forEach(ch=>{ch.b=rs(ch.nm);ch.src='dice'});SPC.forEach(setB);sn();
+const DIRM=C.bmode=='Directional'&&SPC.length>0;
+stp('3. Hex Loader','§10.1–10.3',DIRM?'Directional map: no biome dice. Every other chunk takes the biome of the nearest spawn chunk, so each side of the map is one biome. A chunk exactly between two spawn chunks gets a die to pick one. Chunks the GM set by hand keep their own biome.':'One d6 per Hex Loader slot, same table. Chunks the GM set by hand keep their own biome.');
+CH.filter(c=>c.cr>0&&!c.isS).forEach(ch=>{const v=pb(ch);
+if(v>=0){ch.b=v;ch.src='set';ln(ch.nm+' → '+BIO[v]+' (set by the GM)')}
+else if(DIRM){let bd=1e9,tied=[];for(const q of SPC){const dd=crOf([ch.o[0]-q.o[0],ch.o[1]-q.o[1]]);if(dd<bd){bd=dd;tied=[q]}else if(dd==bd)tied.push(q)}
+const q=tied.length>1?tied[rn(tied.length,ch.nm+' border tie: '+tied.map(t=>t.nm).join(' / '),ch.nm)-1]:tied[0];ch.b=q.b;ch.src='dir';ln(ch.nm+' → '+BIO[ch.b]+' (side of '+q.nm+')')}
+else{ch.b=rb(ch.nm);ch.src='dice'}setB(ch)});sn();
+stp('4. Tile rolls','§10.5','d20 per tile on its chunk biome row, reading each chunk: centre, then clockwise from east. Antechamber tiles beside the Boss are Path (no roll).');
+const ty=(b,x)=>{const B=BT[b],m=(B[1]-B[0])*C.mobD,w=(B[2]-B[1])*C.wallD,o=(B[3]-B[2])*C.obsD,c=(20-B[3])*C.chestD,pa=Math.max(1,20-m-w-o-c);return x<=pa?'P':x<=pa+m?'M':x<=pa+m+w?'W':x<=pa+m+w+o?'O':'C'};
+CH.forEach(ch=>{for(const k of ch.tl){const t=T[k];if(ch.cr==0){t.t=k=='0,0'?'B':'P';continue}if(t.ring==1){t.t='P';continue}t.t=ty(t.b,rl(20,ch.nm+' tile '+(ch.tl.indexOf(k)+1),ch.nm+' · '+BIO[ch.b]))}});sn();
+stp('5. Spawn assignment','§10.6','A die picks the starting spawn chunk; players are spaced evenly; each takes the free spawn chunk with the best favour score (tie: nearest default).');
+const S=CH.filter(c=>c.isS),SL=S.length,start=rn(SL,'Start spawn chunk'),gp=Math.max(1,Math.floor(SL/P)),used=new Set(),SPK=[];
+for(let k=0;k<P;k++){const base=(start-1+k*gp)%SL;let best=null;for(let o=0;o<SL;o++){const sl=(base+o)%SL;if(used.has(sl))continue;const sc=C.affSpawn?bsc(AFF[k],S[sl].b):0,dd=Math.min(o,SL-o);if(!best||sc>best.sc||(sc==best.sc&&dd<best.dd))best={sl,sc,dd}}
+used.add(best.sl);const ch=S[best.sl],t=T[ch.key];t.t='P';t.sp=k+1;t.shop=1;ch.sp=k+1;SPK.push(ch.key);const a=AFF[k],bt=BE[ch.b].filter(m=>beats(a,m)).map(m=>EL[m]);
+SPI[k]=`${C.names[k]} (Affinity ${EL[a]}) spawns in the ${BIO[ch.b]} (${ch.nm})`+(best.sc>0?` — ${EL[a]} has Advantage over ${bt.join(' / ')} mobs here`:a>=5?' — Luxis/Noctis have no elemental Advantage in any biome':' — no favourable biome available');ln(`${C.names[k]}: default ${S[base].nm}, takes ${ch.nm} (${BIO[ch.b]}, favour ${best.sc})`)}SPI.length=P;sn();
+stp('6. Chunk hubs','§10.7','d20 per ordinary chunk centre: 1–2 Soul Corridor, 3 Shrine, 4 Ruined Outpost, 5–20 nothing.');
+for(const ch of CH){if(ch.cr==0||ch.sp)continue;const t=T[ch.key],x=rl(20,ch.nm+' hub',ch.nm);
+if(x<=2){t.t='P';t.shop=1;ch.hub='Soul Corridor'}else if(x==3){t.t='P';t.sh=1;ch.hub='Shrine'}else if(x==4){t.t='C';ch.hub='Ruined Outpost';nb(ch.key).filter(y=>T[y].t=='P'&&!T[y].sp&&T[y].cr>0).slice(0,2).forEach(y=>T[y].t='C')}if(ch.hub){t.hub=ch.hub;ln(ch.nm+' → '+ch.hub)}}sn();
+stp('7. Mini-Boss lairs','§10.8','Candidates are numbered in slot order: every chunk except the Boss and spawn chunks; a die (reroll overs) picks each.');
+let cand=CH.filter(c=>c.cr>0&&!c.isS);if(!cand.length)cand=CH.filter(c=>c.isS&&!c.sp);
+for(let z=0;z<C.K&&cand.length;z++){const i=rn(cand.length,'Lair '+(z+1)+' pick of '+cand.length),ch=cand.splice(i-1,1)[0],t=T[ch.key];t.t='M';t.lair=1;ch.lair=1;delete t.shop;delete t.sh;delete t.hub;ln('Lair '+(z+1)+' → '+ch.nm)}sn();
+stp('8. Portals','§11.1','d4 + 1 per 12 chunks; each Portal on the centre of a valid ordinary chunk (no Boss/spawn chunk, lair, hub or other Portal); then a d6 for behaviour.');
+const N=rl(4,'Portal count d4')+Math.floor(CH.length/12);ln('Portals: '+N);
+for(let z=0;z<N;z++){const c2=CH.filter(c=>c.cr>0&&!c.isS&&!c.lair&&!c.hub&&!c.por);if(!c2.length){ln('No valid chunk left');break}const i=rn(c2.length,'Portal '+(z+1)+' pick of '+c2.length),ch=c2[i-1],t=T[ch.key],b=rl(6,'Portal '+(z+1)+' behaviour');ch.por=1;t.portal=z+1;t.pb=b<=4?'Stable':b==5?'Flickering':'Volatile';t.t='P';ln('Portal '+(z+1)+' → '+ch.nm+', '+t.pb)}sn();
+stp('9. Mob stats','§8.1','CR = d4 + Depth − Spawn Penalty (min 1); Mini-Boss +3. Element d6: 1–3 first, 4–6 second biome element. Depth = 6 × distance ÷ (farthest + 1), rounded down.');
+let mn=0;for(const k in T){const t=T[k];if(t.t=='C')t.tier=0;if(t.t=='M'){const id='m'+mn++,d4=rl(4,'Mob d4','Mob '+k),dp=dep(t.ring),ds=SPK.length?Math.min(...SPK.map(s=>hd(k,s))):99,pen=C.spawnR>0?Math.max(0,C.spawnR+1-ds):0,bsv=d4+dp+(t.lair?3:0),cr=Math.max(1,bsv-pen),e=rl(6,'Mob element d6','Mob '+k);
+MB[id]={id,n:t.lair?'Mini-Boss':'Mob',cr,cb:bsv,pen,ds,el:BE[t.b][e<=3?0:1],hp:19+9*cr,mhp:19+9*cr,home:k,pos:k,s:'D',mini:!!t.lair,sts:[],ms:0};t.t='P';t.mob=id;ln(`${t.lair?'Mini-Boss':'Mob'} at ${k}: d4 ${d4} + Depth ${dp}${t.lair?' + 3':''} − Penalty ${pen} = CR ${cr}, ${EL[MB[id].el]}`)}}sn();
+stp('10. Connectivity repair','§10.9','Any unreachable tile: a die picks one adjacent Wall to open; repeat.');
+for(let g=0;g<99;g++){const seen={},q=[];for(const k in T)if(T[k].ring==1){seen[k]=1;q.push(k)}while(q.length){const k=q.pop();for(const x of nb(k))if(!seen[x]&&T[x].t!='W'){seen[x]=1;q.push(x)}}
+const bad=Object.keys(T).filter(k=>!seen[k]&&T[k].t!='W'&&T[k].t!='B');let ch=0;for(const k of bad){const w=nb(k).filter(x=>T[x].t=='W');if(w.length){const i=rn(w.length,'Wall to open next to '+k);T[w[i-1]].t='P';ln('Opened wall '+w[i-1]);ch=1;break}}if(!ch)break}
+if(!SIM.c.ln.length)ln('Everything is already reachable.');sn();
+const MN=C.man||{},mks=Object.keys(MN).filter(k=>T[k]&&T[k].t!='B');
+if(mks.length){stp('11. Manual tile edits','GM tile editor','Tiles the GM placed by hand are applied last, so connectivity repair never undoes them.');
+const clr=t=>{if(t.mob){delete MB[t.mob];delete t.mob}delete t.lair;delete t.portal;delete t.pb;delete t.shop;delete t.sh;delete t.tier},hs=k=>{let h=0;for(const c of k)h=(h*31+c.charCodeAt(0))>>>0;return h};
+let pn=Math.max(0,...Object.values(T).map(x=>x.portal||0)),xn=0;
+for(const k of mks){const o=MN[k],t=T[k];if(!o.sp||o.sp>P)continue;if(t.sp&&t.sp!=o.sp){ln('Spawn of '+C.names[o.sp-1]+' skipped: '+k+' is another player\'s spawn');continue}
+for(const y in T)if(T[y].sp==o.sp){delete T[y].sp;delete T[y].shop}clr(t);t.t='P';t.sp=o.sp;t.shop=1;SPI[o.sp-1]=C.names[o.sp-1]+' spawns on a tile placed by the GM';ln('Spawn of '+C.names[o.sp-1]+' → '+k)}
+for(const k of mks){const o=MN[k],t=T[k];if(o.sp||t.sp)continue;clr(t);t.t=o.t||'P';
+if(o.t=='C')t.tier=Math.max(0,Math.min(4,o.tier|0));
+if(o.portal){t.portal=++pn;t.pb=o.portal}
+if(o.shop)t.shop=1;if(o.sh)t.sh=1;
+if(o.mob){const cr=Math.max(1,Math.round(o.mob.cr)||1),id='x'+xn++,el=o.mob.el>=0?o.mob.el:(BE[t.b]||BE[0])[hs(k)%6<3?0:1];MB[id]={id,n:o.mob.mini?'Mini-Boss':'Mob',cr,cb:cr,pen:0,ds:0,el,hp:19+9*cr,mhp:19+9*cr,home:k,pos:k,s:'D',mini:!!o.mob.mini,sts:[],ms:0};t.mob=id;if(o.mob.mini)t.lair=1}}
+ln(mks.length+' tile(s) edited by hand');sn()}
+}
+// ---------- dice simulation ----------
+function applySnap(s){Object.keys(T).forEach((k,i)=>{const a=s[i],t=T[k];t.b=a[0];t.t=a[1];t.sp=a[2];t.shop=a[3];t.sh=a[4];t.lair=a[5];t.portal=a[6];t.pb=a[7];t.mob=a[8]})}
+function simView(){gen();SI=0;$('#app').innerHTML='<div id=game><div id=bd></div><div id=side></div></div>';simDraw()}
+function simGo(x){SI=Math.max(0,Math.min(SIM.steps.length-1,x<0&&x==-99?0:x==99?SIM.steps.length-1:SI+x));simDraw()}
+function simDraw(){const s=SIM.steps[SI];applySnap(s.snap);$('#bd').innerHTML=board({});applyCam();const gr={};s.r.forEach(r=>(gr[r.g]=gr[r.g]||[]).push(r));
+$('#side').innerHTML=`<h1>${s.t}</h1><div class=row><button onclick="simGo(-1)" ${SI?'':'disabled'}>◀ Prev</button><button onclick="simGo(1)" ${SI<SIM.steps.length-1?'':'disabled'}>Next ▶</button><select onchange="SI=+this.value;simDraw()">${SIM.steps.map((x,i)=>`<option value=${i} ${i==SI?'selected':''}>${x.t}</option>`).join('')}</select></div>
+<div class=card><small>${s.ref} (Guide Book)</small><br>${s.note}</div>${s.ln.length?`<div class=card>${s.ln.join('<br>')}</div>`:''}
+<div class=card style="max-height:46vh;overflow:auto">${Object.keys(gr).map(g=>`<div style="margin:3px 0"><small>${g}</small><br>${gr[g].map(r=>`<span class=die title="${r.l}" style="${r.x?'opacity:.45':''}"><small>d${r.n}</small>${r.v}</span>`).join(' ')}</div>`).join('')||'<small>No dice in this step.</small>'}</div>
+<div class=card><b>Physical dice mode</b><br><small>Type your real dice results in order (any separator). Missing results are rolled randomly. Greyed dice are rerolls.</small><textarea id=md rows=3 style="width:100%">${C.manual||''}</textarea><div class=row><button onclick="C.manual=$('#md').value;simView()">Re-run</button><button onclick="C.manual='';simView()">Clear</button></div></div>
+<div class=row><button onclick="setup()">Back to setup</button><button onclick="C.seed=(C.seed*7919+13)%100000;C.manual='';simView()">New seed</button></div>`}
+// ---------- tile editor ----------
+let TED=0,TL={k:'wall',tier:2,cr:3,el:-1,mini:0,beh:'Stable',pn:1};
+const TLN=[['path','Path'],['wall','Wall ▲'],['obs','Obstacle ✕'],['chest','Chest ▣'],['mob','Mob / Mini-Boss'],['portal','Portal ◎'],['shop','Soul Corridor $'],['shrine','Shrine ✚'],['spawn','Spawn tile ⌂'],['erase','Erase (back to generated)']],TIERN=['Common','Uncommon','Rare','Epic','Legendary'];
+function tedView(){TED=1;C.man=C.man||{};cam={x:0,y:0,z:1};$('#app').innerHTML='<div id=game><div id=bd></div><div id=side></div></div>';gen();$('#bd').innerHTML=board({});applyCam();tedSide()}
+function tedRedraw(){gen();$('#bd').innerHTML=board({});applyCam();tedStat()}
+function tedStat(){const e=$('#tdi');if(!e)return;const seen={},q=[];for(const k in T)if(T[k].ring==1){seen[k]=1;q.push(k)}while(q.length){const k=q.pop();for(const x of nb(k))if(!seen[x]&&T[x].t!='W'){seen[x]=1;q.push(x)}}
+const bad=Object.keys(T).filter(k=>!seen[k]&&T[k].t!='W'&&T[k].t!='B').length,mb=Object.values(MB),mini=mb.filter(m=>m.mini).length,por=Object.values(T).filter(t=>t.portal).length;
+e.innerHTML=`${Object.keys(C.man).length} tile(s) edited by hand · ${mb.length} mobs (${mini} Mini-Boss lairs, ${C.K} Boss Key(s) needed) · ${por} portal(s)${mini<C.K?'<br>⚠ Fewer Mini-Boss lairs than Boss Keys needed: the Boss cannot be unlocked.':''}${bad?`<br>⚠ ${bad} open tile(s) cannot be reached from the Boss tile.`:''}`}
+function tedSide(){const k=TL.k,o=k=='chest'?`Tier <select onchange="TL.tier=+this.value">${TIERN.map((n,i)=>`<option value=${i} ${TL.tier==i?'selected':''}>${n}</option>`).join('')}</select>`:k=='mob'?`Danger level (CR) <input type=number min=1 value=${TL.cr} style="width:64px" onchange="TL.cr=Math.max(1,Math.round(+this.value)||1);this.value=TL.cr"><br>Element <select onchange="TL.el=+this.value"><option value=-1 ${TL.el<0?'selected':''}>Auto (by biome)</option>${EL.map((n,i)=>`<option value=${i} ${TL.el==i?'selected':''}>${n}</option>`).join('')}</select><br><label><input type=checkbox ${TL.mini?'checked':''} onchange="TL.mini=this.checked?1:0"> Mini-Boss lair (holds a Boss Key)</label>`:k=='portal'?`Behavior <select onchange="TL.beh=this.value">${['Stable','Flickering','Volatile'].map(n=>`<option ${TL.beh==n?'selected':''}>${n}</option>`).join('')}</select>`:k=='spawn'?`Player <select onchange="TL.pn=+this.value">${[...Array(C.players)].map((_,i)=>`<option value=${i+1} ${TL.pn==i+1?'selected':''}>${C.names[i]}</option>`).join('')}</select><br><small>Mob danger levels are not recalculated for a moved spawn.</small>`:k=='erase'?'Click a tile to remove your edit and get the generated tile back.':'Click tiles to place it. Each tile holds one thing; placing replaces what was there.';
+$('#side').innerHTML=`<h1>Tile editor</h1><div class=row><button data-cam=in>＋</button><button data-cam=out>－</button><button data-cam=rs>Reset view</button></div><small>Pick a tool, then click tiles. Drag to pan, wheel or ＋/－ to zoom. Edits are applied after generation, so they survive a new seed, but they are tied to tile positions: changing chunk size or layout can move or skip them. The Boss tile and generated spawn tiles are protected.</small>
+<div class=row style="margin:6px 0">${TLN.map(([a,l])=>`<button onclick="TL.k='${a}';tedSide()" ${TL.k==a?'class="tab on"':''}>${l}</button>`).join('')}</div><div class=card>${o}</div><div class=card id=tdi></div>
+<div class=row><button onclick="C.man={};tedRedraw()" title="Remove all your edits and return to the generated map">Clear all edits</button><button onclick="tedAllPath()" title="Turn every tile into a plain Path tile (Boss and spawn tiles are kept)">Clear all tiles → Path</button><button onclick="setup()" style="background:var(--ac);color:#111">Done</button></div>`;tedStat()}
+function tedAllPath(){if(!confirm("Reset every tile to a plain Path tile? This removes all walls, obstacles, chests, mobs, portals, shops and shrines (Boss and spawn tiles are kept)."))return;C.man={};gen();for(const k in T){if(T[k].t!="B"&&!T[k].sp)C.man[k]={t:"P"}}tedRedraw()}
+function tedClick(k){if(!T[k]||T[k].t=='B')return;const m=C.man,a=TL.k;let o=null;if(T[k].sp&&a!='spawn'&&a!='erase')return;
+if(a=='erase')delete m[k];else if(a=='path')o={t:'P'};else if(a=='wall')o={t:'W'};else if(a=='obs')o={t:'O'};else if(a=='chest')o={t:'C',tier:TL.tier};else if(a=='mob')o={t:'P',mob:{cr:TL.cr,el:TL.el,mini:TL.mini}};else if(a=='portal')o={t:'P',portal:TL.beh};else if(a=='shop')o={t:'P',shop:1};else if(a=='shrine')o={t:'P',sh:1};else if(a=='spawn')o={t:'P',sp:TL.pn};
+if(o){if(a=='spawn')for(const x in m)if(m[x].sp==TL.pn)delete m[x];m[k]=o}tedRedraw()}
+// ---------- chunk map editor ----------
+let EDM=0,BR=-1;
+const abk=(bs,o)=>(bs[0]+o[0])+','+(bs[1]+o[1]);
+function edCells(){const bs=C.boss||[0,0];if(C.on)return new Set(C.on);const s=new Set([bs.join(',')]);const m=Math.max(7,Math.round(C.maxCh)||7);let M=1;while(1+3*M*(M+1)<m)M++;for(let p=1;p<=M;p++)walk(p).forEach(o=>s.add(abk(bs,o)));return s}
+function edView(){if(!C.on)C.on=[...edCells()];if(!C.boss)C.boss=[0,0];if(!C.cb)C.cb={};if(!C.spk)C.spk=[];edDraw()}
+function edDraw(){const bs=C.boss,on=new Set(C.on),LY=layout(),spm=new Map(LY.sp.map((x,i)=>[abk(bs,x.o),i+1])),cb=C.cb||{};
+const EE=Math.max(5,...[...on].map(k=>{const[a,c]=k.split(',').map(Number);return crOf([a,c])+1})),Z=Math.min(22,135/(S3*(EE+.6)),125/(1.5*EE+1.2));let pl='',pl2='',cnt=0;
+for(let i=-EE;i<=EE;i++)for(let j=-EE;j<=EE;j++){if(crOf([i,j])>EE)continue;const k=i+','+j,x=Z*(S3*i+S3/2*j),y=Z*1.5*j,isB=i==bs[0]&&j==bs[1],isO=on.has(k)||isB,sl=spm.get(k),b=cb[k];if(isO)cnt++;
+const fill=isB?'#d4a94a':!isO?'#222':b!=null?BC[b]:'#4b524d',nm=isB?'Boss chunk':!isO?'Empty (click to add a chunk)':(sl?'Spawn chunk S'+sl+' · ':'Chunk · ')+(b!=null?BIO[b]+' (set)':'random biome');
+const pg=`<polygon data-c="${k}" points="${[0,1,2,3,4,5].map(a=>{const t=Math.PI/180*(60*a-30);return(x+Z*Math.cos(t)).toFixed(1)+','+(y+Z*Math.sin(t)).toFixed(1)}).join(' ')}" fill="${fill}" stroke="${sl?SLC[(sl-1)%6]:'#000'}" stroke-width="${sl?3:1}" style="cursor:pointer"><title>${nm}</title></polygon>`,lb=isB?'☠':sl?'S'+sl:(isO&&b!=null?BIO[b][0]:''),tx=lb?`<text x="${x}" y="${y+4}" text-anchor="middle" font-size="${Math.max(7,Z*.5)}" fill="#fff" pointer-events="none">${lb}</text>`:'';
+if(sl)pl2+=pg+tx;else pl+=pg+tx}
+const seen=new Set([bs.join(',')]),q=[bs.join(',')];while(q.length){const[a,b]=q.pop().split(',').map(Number);for(const o of walk(1)){const k=(a+o[0])+','+(b+o[1]);if(on.has(k)&&!seen.has(k)){seen.add(k);q.push(k)}}}
+const conn=[...on].every(k=>seen.has(k)),kr=Math.max(0,Math.round(C.chunkK)||0),cs=3*kr*(kr+1)+1,auto=C.autoSp!=0,tb=(m,l)=>`<button onclick="EDM=${m};edDraw()" ${EDM==m?'class="tab on"':''}>${l}</button>`;
+$('#app').innerHTML=`<div id=game><div id=bd><svg viewBox="-150 -140 300 280" id=esv style="width:100%;height:100%">${pl}${pl2}</svg></div><div id=side><h1>Chunk map editor</h1><div class=card>${cnt} chunks × ${cs} tiles = ${cnt*cs} tiles · spawn chunks: ${LY.sp.length} · Hex Loader dice: ${Math.max(0,cnt-1-LY.sp.length)}<br>${conn?'Layout is connected.':'⚠ Some chunks are not connected to the Boss chunk.'}${cnt>37?'<br>⚠ More than 30 Hex Loader dice: beyond the physical kit.':''}${LY.note?'<br>'+LY.note:''}</div>
+<div class=row style="margin:6px 0"><button onclick="C.autoSp=${auto?0:1};if(EDM==3)EDM=0;edDraw()" style="background:var(--ac);color:#111">Spawn chunks: ${auto?'AUTO (farthest chunk in each of the six directions)':'MANUAL (you mark them)'}</button></div>
+<small>Gold = Boss · coloured outline = spawn chunk (S1 bottom-left, S2 bottom-right, S3 right, S4 top-right, S5 top-left, S6 left when automatic) · grey = random biome (rolled) · coloured fill + letter = biome you set. Spawn chunks always get six different biomes unless you set the same one yourself.</small>
+<div class=row style="margin:8px 0">${tb(0,'Toggle chunks')}${tb(1,'Move Boss here')}${tb(2,'Set biome')}${auto?'':tb(3,'Mark spawn chunk')}</div>
+${EDM==2?`<div class=row style="margin:4px 0">${[-1,0,1,2,3,4,5,6].map(b=>`<button onclick="BR=${b};edDraw()" style="background:${b<0?'#4b524d':BC[b]};border:2px solid ${BR==b?'#fff':'transparent'}">${b<0?'Random':BIO[b]}</button>`).join('')}</div><small>Click a chunk to give it the selected biome. "Random" puts it back on the dice.</small>`:''}
+<div class=row><button onclick="C.on=null;C.boss=null;C.cb={};C.spk=[];C.on=[...edCells()];C.boss=[0,0];edDraw()">Reset to auto</button><button onclick="C.on=[[0,0],...walk(1)].map(o=>abk(C.boss,o));edDraw()">Minimal (7)</button><button onclick="C.maxCh=Math.max(7,new Set(C.on).size);C.on=C.on;setup()" style="background:var(--ac);color:#111">Done</button><button onclick="C.on=null;C.boss=null;C.cb={};C.spk=[];setup()">Cancel (auto)</button></div></div></div>`;
+$('#esv').onclick=e=>{const k=e.target.dataset&&e.target.dataset.c;if(!k)return;
+if(EDM==1){C.boss=k.split(',').map(Number);if(!C.on.includes(k))C.on.push(k);C.spk=C.spk.filter(x=>x!=k);delete C.cb[k];edDraw();return}
+if(k==C.boss.join(','))return;
+if(EDM==2){if(!C.on.includes(k))return;if(BR<0)delete C.cb[k];else C.cb[k]=BR;edDraw();return}
+if(EDM==3){if(!C.on.includes(k))return;const a=C.spk.indexOf(k);if(a>=0)C.spk.splice(a,1);else C.spk.push(k);edDraw();return}
+const a=C.on.indexOf(k);if(a>=0){C.on.splice(a,1);C.spk=C.spk.filter(x=>x!=k);delete C.cb[k]}else C.on.push(k);edDraw()}}
+// ---------- board drawing ----------
+let SZ=24;const S3=Math.sqrt(3),px=(q,r)=>[SZ*(S3*q+S3/2*r),SZ*1.5*r];
+const hp6=(x,y)=>[0,1,2,3,4,5].map(i=>{const a=Math.PI/180*(60*i-30);return(x+SZ*Math.cos(a)).toFixed(1)+','+(y+SZ*Math.sin(a)).toFixed(1)}).join(' ');
+const TN={W:'Wall: blocks movement and line of sight',O:'Obstacle: blocks movement',B:'Boss tile',C:'Chest (open with Open chest action)',M:'Mob',P:'Path: walkable'};
+const SLC=['#ff4d4d','#ff9f1a','#ffe14d','#35e08a','#3bc9ff','#e07bff'],SLN=['red','orange','yellow','green','cyan','magenta'],EDG=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+function tip(t){const bn=BIO[t.b]||'Not yet rolled',cn=t.ch==null?'':t.cr==0?'Boss chunk':t.sl?'Spawn chunk '+t.cn+' ('+SLN[(t.sl-1)%6]+' border)':'Chunk '+t.cn+' (Hex Loader)';
+let a=[TN[t.t]||t.t,'Biome: '+bn+(t.b>=0&&t.bs&&t.cr>0?' ('+({set:'set by the GM',dir:'directional: same as its nearest spawn chunk',dice:'rolled on the loader'})[t.bs]+')':'')];if(cn)a.push(cn);a.push('Depth '+dep(t.ring)+' · '+t.ring+' tile'+(t.ring==1?'':'s')+' from the Boss tile · ('+t.q+','+t.r+')');
+if(t.lair)a.push('Mini-Boss lair (holds a Boss Key)');if(t.hub&&t.hub!='Soul Corridor'&&t.hub!='Shrine')a.push('Chunk hub: '+t.hub);
+if(t.portal)a.push('◎ Portal '+t.portal+' ('+t.pb+')');if(t.sp)a.push('Spawn tile of '+(C.names[t.sp-1]||'player '+t.sp)+' (sanctuary)');if(t.shop)a.push('$ Soul Corridor: Soul Resonance Shop (buy skills, stats, consumables)');if(t.sh)a.push('✚ Shrine');if(t.t=='C')a.push('Chest tier '+t.tier);const m=t.mob&&MB[t.mob];if(m&&m.hp>0)a.push((m.mini?'Mini-Boss ':'Mob ')+'CR '+m.cr+(m.pen?' (base '+m.cb+' − '+m.pen+' spawn penalty, '+m.ds+' tiles from nearest Spawn tile)':'')+' (number on token = CR), element '+EL[m.el]+', HP '+m.hp);return a.join('\n').replace(/"/g,'')}
+function sedge(t,X,Y){let r='';for(let i=0;i<6;i++){const n=T[(t.q+EDG[i][0])+','+(t.r+EDG[i][1])];if(n&&n.ch==t.ch)continue;const a1=Math.PI/180*(60*i-30),a2=Math.PI/180*(60*i+30);r+=`<line x1="${(X+SZ*Math.cos(a1)).toFixed(1)}" y1="${(Y+SZ*Math.sin(a1)).toFixed(1)}" x2="${(X+SZ*Math.cos(a2)).toFixed(1)}" y2="${(Y+SZ*Math.sin(a2)).toFixed(1)}" stroke="${SLC[(t.sl-1)%6]}" stroke-width="${Math.max(2.5,SZ*.16).toFixed(1)}" stroke-linecap="round" pointer-events="none"/>`}return r}
+function board(x){x=x||{};let o='',ov='',ov0='',ps='';const E=SZ*S3*(R+1.2),F=SZ*1.6*(R+1.2);
+for(const k in T){const t=T[k],[X,Y]=px(t.q,t.r);let f=BC[t.b]||'#2a2f2c',g='',gc='#fff';
+if(t.t=='W'){f='#2b2b32';g='▲';gc='#777'}else if(t.t=='O'){f='#4a4a4a';g='✕';gc='#bbb'}else if(t.t=='B'){f='#0b0b0b';g='☠';gc='#d4a94a'}else if(t.t=='M'){g='M';gc='#ff9a9a'}
+else if(t.t=='C'){g='▣';gc=RC[t.tier]}else if(t.sp){g='⌂';gc='#d4a94a'}else if(t.shop){g='$';gc='#d4a94a'}else if(t.sh){g='✚';gc='#6fe39a'}else if(t.portal){g='◎';gc='#9ad7ff'}
+if(x.storm&&t.ring>=R-x.storm+1&&t.ring>1)f='#3a2458';
+o+=`<polygon data-k="${k}" points="${hp6(X,Y)}" fill="${f}" stroke="#0008" stroke-width="1"><title>${tip(t)}</title></polygon>`;
+if(g)o+=`<text x="${X}" y="${Y+5}" fill="${gc}" font-size="13" text-anchor="middle" pointer-events="none">${g}</text>`;
+if(t.sl)ov0+=sedge(t,X,Y);if(x.piles&&x.piles[k])o+=`<text x="${X+9}" y="${Y-5}" fill="#ffd56a" font-size="11" pointer-events="none">✦</text>`;
+const m=t.mob&&MB[t.mob];if(m&&m.hp>0)o+=`<circle cx="${X}" cy="${Y}" r="9" fill="#111" stroke="${EC[m.el]}" stroke-width="3" pointer-events="none"/><text x="${X}" y="${Y+4}" fill="#fff" font-size="10" text-anchor="middle" pointer-events="none">${m.mini?'★':''}${m.cr}</text>`;
+if(x.hl&&x.hl[k])ov+=`<polygon data-k="${k}" points="${hp6(X,Y)}" fill="${x.hl[k]=='t'?'#ff3b3b55':'#4aa3e055'}" stroke="${x.hl[k]=='t'?'#ff6b6b':'#8fd0ff'}"/>`}
+if(x.pl){const cnt={};x.pl.forEach((p,i)=>{if(!p.alive)return;const[X,Y]=px(...kq(p.pos)),n=cnt[p.pos]=(cnt[p.pos]||0)+1,ox=(n-1)*6;ps+=`<circle cx="${X-4+ox}" cy="${Y+4}" r="8" fill="${p.col}" stroke="${i==x.cur?'#fff':'#000'}" stroke-width="${i==x.cur?3:1.5}" pointer-events="none"/><text x="${X-4+ox}" y="${Y+8}" font-size="10" fill="#000" text-anchor="middle" pointer-events="none">${p.n[0]}</text>`})}
+if(x.boss&&x.boss.on)ps+=`<text x="0" y="-14" fill="#ff6b6b" font-size="11" text-anchor="middle">BOSS ${Math.max(0,x.boss.hp)}/${x.boss.mhp}</text>`;
+return`<svg viewBox="${-E} ${-F} ${2*E} ${2*F}" id="sv">${o}${ov0}${ov}${ps}</svg>`}
+// ---------- GM setup UI ----------
+const newC=()=>JSON.parse(JSON.stringify(D));
+function ctl(s){const[,k,l,ty,lo,hi,o]=s,v=C[k];
+if(ty=='b')return`<label><input type=checkbox data-k=${k} ${v?'checked':''}> ${l}</label>`;
+if(ty=='e')return`<label>${l} <select data-k=${k}>${o.map(x=>`<option ${x==v?'selected':''}>${x}</option>`).join('')}</select></label>`;
+if(ty=='a')return`<div class=card>${l}<br>${v.map((x,i)=>`<input type=number class=s data-k=${k} data-i=${i} value=${x} step=any title="${o?o[i]:i}">`).join('')}</div>`;
+return`<label>${l} <input type=number data-k=${k} value=${v} ${lo!=null?`min=${lo}`:''} ${hi?`max=${hi}`:''} step=any></label>`}
+function setup(){TED=0;const tabs=['Match','Terrain','Monsters','Characters','Loot','Economy','Combat','Skills'];
+let body=tab=='Skills'?SK.map(s=>`<label><input type=checkbox data-sk="${s[1]}" ${C.sk[s[1]]?'checked':''} ${s[4]?'':'disabled'}> ${s[0]}: ${s[1]} (T${s[2]}, ${s[3]}c)${s[4]?'':' <i>stub</i>'}</label>`).join('<br>'):SC.filter(s=>s[0]==tab).map(ctl).join('<br>');
+if(tab=='Match')body+='<hr>'+[...Array(C.players)].map((_,i)=>`<div><input data-pn=${i} value="${C.names[i]}"> <select data-pc=${i}>${Object.keys(CL).map(c=>`<option ${c==C.cls[i]?'selected':''}>${c}</option>`).join('')}</select><br><small>Weapon <select data-pw=${i} title=\"Starting weapon. Random = roll d8 on the weapon list (Guide §2.4)\"><option value=\"\">Random (d8)</option>${GB.slice(0,8).map((g,j)=>`<option value=${j} ${(C.pW||[])[i]===j?'selected':''}>${g[0]}</option>`).join('')}</select> · Start SR <input type=number min=0 style="width:70px" data-psr=${i} value="${C.pSR[i]==null?'':C.pSR[i]}" placeholder="${C.startSR}" title="Blank = use the global starting SR"> Stats ${SN.map((n,j)=>`${n}<input type=number min=0 max=20 style="width:42px" data-pst="${i}.${j}" value="${(C.pSt[i]||[])[j]==null?'':C.pSt[i][j]}" placeholder="${Math.max(0,C.startSt+CL[C.cls[i]].m[j])}" title="Blank = starting stat + class bonus">`).join(' ')}</small></div>`).join('');
+$('#app').innerHTML=`<div id=setup><div id=cfg><h1>Arcana Resonatia — Game Master</h1><div class=row>${Object.keys(PRE).map(p=>`<button data-pre="${p}">${p}</button>`).join('')}<button id=rs>Reroll seed</button></div><div class=row style="margin:8px 0">${tabs.map(t=>`<button class="tab ${t==tab?'on':''}" data-t=${t}>${t}</button>`).join('')}</div><div>${body}</div><hr><textarea id=io rows=4 style="width:100%" placeholder="Config JSON"></textarea><div class=row><button id=ex>Export</button><button id=im>Import</button></div></div>
+<div id=pvw><div class=row><button id=go style="background:var(--ac);color:#111;font-weight:700">Start game</button><button id=simb>Dice simulation</button><button id=edb>Chunk map editor</button><button id=ted>Tile editor</button><span id=st></span></div><div id=pv style="height:min(60vh,520px)"></div></div></div>`;prev()}
+function prev(){gen();$('#pv').innerHTML=board();const c={},ch=[0,0,0,0,0];for(const k in T){const t=T[k];c[t.t]=(c[t.t]||0)+1;if(t.tier!=null)ch[t.tier]++}
+$('#st').innerHTML=`${CHN} chunks × ${CS} tiles · radius ${R} · ${Object.keys(T).length} tiles · mobs ${Object.keys(MB).length} · walls ${c.W||0} · obstacles ${c.O||0} · chests ${ch.join('/')} (tiers C→L)<br>Spawn chunk borders: ${CH0.map((c,i)=>`<span style="color:${SLC[i%6]};font-weight:700">■ S${i+1} ${BIO[c.b]}</span>`).join(' · ')}`}
+// ---------- core rules ----------
+const sv=(e,i)=>e.isP?Math.max(0,e.st[i]-pen(e,i)):Math.min(20,1+e.cr),md=(e,i)=>Math.floor((sv(e,i)-10)/2),lvl=e=>e.isP?e.lv:e.cr,pbOf=l=>PBA[Math.min(20,Math.max(1,l))-1];
+const has=(e,k)=>e.sts.find(s=>s.k==k),rc=it=>[0,0,0,1,9][it.r];
+function pen(p,i){let x=0;for(const s of['w','a','s']){const it=p.eq[s];if(!it)continue;const g=GB[it.b];let b=i==2?g[5]:i==1?g[6]:0;if(i==2&&it.aff.includes('Featherlight'))b--;x+=Math.max(0,b-rc(it))}return x}
+const ac=e=>{if(!e.isP)return Math.floor(e.cr/3);if(has(e,'Gale'))return 0;let a=0;for(const s of['a','s']){const it=e.eq[s];if(it)a+=GB[it.b][4]+Math.ceil(it.r/2)}return a+(has(e,'Iron')?has(e,'Iron').v:0)+(has(e,'Aegis')?1:0)};
+const dv=(e,su)=>md(e,2)+Math.max(0,ac(e)-(su?1:0)),aff=it=>['w','a','s'].reduce((n,s)=>n+(e=>e&&e.aff.includes('Stalwart')?5:0)(it.eq[s]),0);
+const mh=p=>C.hpB+C.hpC*sv(p,1)+C.hpL*(p.lv-1)+aff(p);
+const sync=p=>{const m=mh(p);p.hp=Math.max(1,p.hp+m-p.mh);p.mh=m};
+const spd=p=>Math.floor(Math.max(0,md(p,2))*2/5),rng2=p=>{const w=p.eq.w,g=w?GB[w.b]:GB[0];return[g[2],g[3]+(w&&w.aff.includes('Reaching')?1:0)+(w&&w.r==4?1:0)+(has(p,'Edge')?1:0)]};
+const defEl=e=>{const a=e.isP&&has(e,'Aegis');return a?a.el:e.isP?e.aff:e.el};
+const nm=it=>it.c?`${RAR[it.r]} ${CN[it.kd]}`:`${it.aff[0]?it.aff[0]+' ':''}${GB[it.b][0]} (${RAR[it.r]}${it.att!=null?', '+EL[it.att]:''})`;
+const L=m=>{G.log.push(m);if(G.log.length>120)G.log.shift()};
+const beats=(a,b)=>a<5&&b<5&&b==(a+1)%5;
+function tr2(a,df,tg){let adv=0,dis=0,res=0,vul=0;if(a!=null&&df!=null){if(beats(a,df))adv=1;else if(beats(df,a))dis=1;else if(a>=5&&df>=5){if(a==df)res=1;else vul=1}}
+if(a!=null&&tg.isP){for(const s of['a','s']){const it=tg.eq[s];if(it&&it.att==a)res=1}if(tg.sts.some(s=>(s.k=='Guard'||s.k=='Ward')&&s.el==a))res=1}return{adv,dis,res,vul}}
+const SN2=[['Chill',()=>d(2)],['Burn',()=>d(3)],['Gale',()=>1],['Stagger',()=>1],['Shock',()=>d(3)]];
+function stCheck(t,el,a){if(el==null||el>4||has(t,'Imm'))return;const pb=pbOf(lvl(a)),x=dn(2,6)+md(t,1);if(x>=7+pb){L(`  ${t.n} resists ${SN2[el][0]} (${x} vs ${7+pb})`);return}
+const k=SN2[el][0],du=SN2[el][1](),e=has(t,k);if(e)e.d=Math.max(e.d,du);else t.sts.push({k,d:du});L(`  ${t.n} is afflicted: ${k} (${du} rds)`);if(k=='Stagger'&&t.isP&&t.cnt.length)t.cnt.pop()}
+function hurt(e,x,src){e.hp-=x;if(e.hp<=0)die(e,src)}
+function dmgTo(B,raw,el,A,o){o=o||{};const t=tr2(el,defEl(B),B);if(o.ign)t.res=0;let x=raw;if(t.adv&&!t.dis)x++;else if(t.dis&&!t.adv)x--;
+if(t.vul&&!t.res)x*=2;else if(t.res&&!t.vul)x=Math.floor(x/2);x=Math.max(0,x);
+L(`  ${raw}${t.adv&&!t.dis?' ADV+1':''}${t.dis&&!t.adv?' DIS−1':''}${t.vul&&!t.res?' VULN×2':''}${t.res&&!t.vul?' RES÷2':''} → ${x} damage to ${B.n}`);
+if(A&&A.isP){G.dr[A.id]=(G.dr[A.id]||0)+x;const w=A.eq.w;if(!o.skill&&w&&w.aff.includes('Vampiric')&&x>0)A.hp=Math.min(A.mh,A.hp+d(4))}
+if(!B.isP)B.hit=1,B.ld=A&&A.id;
+if(t.adv&&!t.dis&&el!=null){if(o.refund&&A.cnt.length<4)A.cnt.push(el);if(B.hp>x)stCheck(B,el,A)}
+hurt(B,x,A);return x}
+function atk(A,B,o){o=o||{};const pve=!A.isP||!B.isP,a=pve?0:d(6),b=pve?0:d(6),dbl=!pve&&a==b,si=o.st!=null?o.st:2,w=A.isP&&A.eq.w;
+let acc=md(A,si)+(o.pb?pbOf(lvl(A)):0)+(A.isP&&!o.skill&&w&&(w.aff.includes('Keen')||w.aff.includes('Lucky'))?1:0)+(has(A,'Edge')?pbOf(lvl(A)):0);
+const tot=a+b,hit=pve||o.auto||dbl||tot>=C.hit;
+L(pve?`${A.n} → ${B.n}: PvE, auto-hit`:`${A.n} → ${B.n}: 2d6(${a}+${b})=${tot} → ${hit?(dbl&&tot<C.hit?'CRITICAL SWING':'HIT'):'miss'}`);if(!hit)return 0;
+const bon=A.isP?(has(A,'Might')?has(A,'Might').v:0)-(has(A,'Chill')?1:0):0,inf=A.isP&&has(A,'Infuse');
+const f=o.f||(()=>d(C.dmg)+md(A,si)+(w?w.r:0)+bon+(inf?md(A,3):0));let raw=o.raw!=null?o.raw:f();if(dbl&&o.raw==null)raw=Math.max(raw,f());
+const el=o.el!=null?o.el:o.skill?null:inf?inf.el:(w&&w.att!=null?w.att:A.isP?null:A.el);
+if(A.isP&&B.isP&&B.eq){for(const s of['a','s']){const it=B.eq[s];if(it&&it.aff.includes('Thorned')&&hd(A.pos,B.pos)<=1)hurt(A,d(4),B)}}
+return dmgTo(B,raw,A.isM||A.boss?A.el:el,A,o)}
+function awardSR(p,n){p.tsr+=n;p.sr+=n;L(`${p.n} gains ${n} SR`);while(p.lv<20&&p.tsr>=TH[p.lv]){p.lv++;p.picks++;if(p.cls=='Mage'&&(p.lv==9||p.lv==17))p.picks++;p.mh+=C.hpL;p.hp+=C.hpL;if(p.cnt.length<4)p.cnt.push(p.aff);L(`★ ${p.n} reaches Level ${p.lv} (PB +${pbOf(p.lv)}, +${C.hpL} HP, +1 ${EL[p.aff]} Counter${p.lv%2?', Skill Pick':''})`)}}
+const srFor=(l,cr)=>{const row=SRT[l<=3?0:l>=18?15:l-3];return Math.round((cr>10?Math.max(...row):row[cr-1])*C.srM)};
+// ---------- loot ----------
+const rroll=(dp,tb)=>ti(d(20)+dp+tb);
+function mkGear(dp,tb,minR,force){const b=wpick(C.gearW),g=GB[b];let r=force!=null?force:rroll(dp,tb);if(minR!=null)r=Math.max(r,minR);const it={b,r,aff:[],att:null},tb2=g[1]=='w'?AW:AA;
+for(let n=[0,0,1,1,2][r];n>0;){const a=tb2[d(6)-1];if(!it.aff.includes(a)){it.aff.push(a);n--}}if(r>=3){const e=d(8)-1;it.att=e==7?ri(7):e}return it}
+function mkCons(dp,tb,shop){let kd,r;do{kd=wpick(C.consW);r=rroll(dp,tb);if(kd==9&&r<3)kd=0}while(shop&&(r==4||kd==9));return{c:1,kd,r}}
+function give(p,it){if(it.c){if(p.pack.c.length<C.pc){p.pack.c.push(it);L(`${p.n} takes ${nm(it)}`);return 1}}else{const s=GB[it.b][1];if(!p.eq[s]){p.eq[s]=it;sync(p);L(`${p.n} equips ${nm(it)}`);return 1}if(p.pack.g.length<C.pg){p.pack.g.push(it);L(`${p.n} packs ${nm(it)}`);return 1}}
+(G.piles[p.pos]=G.piles[p.pos]||{i:[],sr:0,k:0}).i.push(it);L(`Pack full: ${nm(it)} dropped as a Loot Pile`);return 0}
+function chest(p,dp,tb,dun){const x=d(20)+2*dp+tb+(dun?4:0),u=C.cuts;L(`${p.n} chest roll ${x}`);
+if(x<=u[0])awardSR(p,dn(1,6)*50*(1+dp));else if(x<=u[1]){for(let i=0;i<2;i++)if(p.cnt.length<4)p.cnt.push(d(8)==8?ri(7):ri(7));L('Counter Cache: +2 Counters')}
+else if(x<=u[2])give(p,mkCons(dp,tb));else if(x<=u[3])give(p,mkGear(dp,tb));else if(x<=u[4])awardSR(p,dn(1,6)*150*(1+dp));else give(p,mkGear(dp,tb,2))}
+// ---------- death, lives, PvP loot ----------
+function die(e,src){if(e.isP){G.q.push({p:e,k:src&&src.isP&&src!==e?src:null});return}
+if(e.boss){G.over=src;L('The Boss falls!');return}
+const t=T[e.pos];t.mob=null;if(G.eng==e.id)G.eng=null;
+if(src&&src.isP){awardSR(src,srFor(src.lv,e.cr));if(src.cnt.length<4)src.cnt.push(e.el);const dp=dep(t.ring),r=d(6);
+if(e.mini){src.keys++;L(`${src.n} takes a Boss Key`);chest(src,dp,C.tier[2])}else if(r==5)give(src,mkCons(dp,0));else if(r==6)chest(src,dp,0)}L(`${e.n} (CR ${e.cr}) is defeated`)}
+const rival=(k,p)=>G.pl.find(q=>q!==p&&q.alive&&q.hp>0&&q.pos==k),stormed=ring=>G.storm&&ring>1&&ring>=R-G.storm+1;
+function flush(){if(G.over||G.ask){return draw()}const e=G.q.shift();if(!e){if(G.nr){G.nr=0;newRound();return}if(G.next){G.next=0;advance();return}if(!cur().alive){G.next=1;return flush()}return draw()}const p=e.p;p.lives--;L(`${p.n} falls! Lives left: ${p.lives}`);
+const fin=()=>{if(p.lives<=0)elim(p);else rewind(p);if(!G.over)flush();else draw()};
+if(e.k&&e.k.alive){const o=[];const s=Math.floor(p.sr/2);if(s>0)o.push([`Take ${s} SR (stolen SR doesn't raise Total)`,()=>{p.sr-=s;e.k.sr+=s}]);
+const eqs=['w','a','s'].filter(x=>p.eq[x]);if(eqs.length){const x=pk(eqs),it=p.eq[x];o.push([`Take equipped ${nm(it)}`,()=>{p.eq[x]=null;sync(p);give(e.k,it)}])}
+if(p.keys>0)o.push(['Take a Boss Key',()=>{p.keys--;e.k.keys++}]);if(p.pack.c.length){const i=ri(p.pack.c.length),it=p.pack.c[i];o.push([`Take ${nm(it)}`,()=>{p.pack.c.splice(i,1);give(e.k,it)}])}
+if(o.length){return ask(`${e.k.n} defeated ${p.n} — choose loot`,o.map(a=>[a[0],()=>{a[1]();fin()}]))}}fin()}
+function elim(p){p.alive=false;p.hp=0;const pl=G.piles[p.pos]=G.piles[p.pos]||{i:[],sr:0,k:0};pl.sr+=p.sr;pl.k+=p.keys;for(const s of['w','a','s'])if(p.eq[s])pl.i.push(p.eq[s]);pl.i.push(...p.pack.g,...p.pack.c);L(`☠ ${p.n} is ELIMINATED; belongings dropped`);
+const al=G.pl.filter(q=>q.alive);if(al.length==1){G.over=al[0]}else if(!al.length)G.over=[...G.pl].sort((a,b)=>b.tsr-a.tsr||b.lv-a.lv)[0]}
+function validTrail(p){return p.trail.slice(-C.echo).reverse().map((k,i)=>{const t=T[k];let bad=t.t=='W'?'wall':t.mob&&MB[t.mob].hp>0?'mob':rival(k,p)?'rival':k=='0,0'?'boss':stormed(t.ring)?'storm':'';return{k,i:i+1,bad}})}
+function rewind(p){const v=validTrail(p).filter(x=>!x.bad),sp=Object.keys(T).find(k=>T[k].sp==G.pl.indexOf(p)+1);
+const go=k=>{p.hp=Math.ceil(p.mh*C.rew);p.sts=[];p.pos=k;p.trail=[k];p.skipMove=1;p.shroud=G.round+C.shroud;if(cur()===p){G.eng=null}L(`${p.n} rewinds to ${k} at ${p.hp} HP, Shrouded`);flush()};
+if(!v.length)return go(sp);ask(`${p.n}: Echo Trail rewind`,v.map(x=>[`${x.i} turn${x.i>1?'s':''} ago (${x.k})`,()=>go(x.k)]))}
+// ---------- modal ----------
+function ask(t,o){G.ask={t,o};draw()}
+// ---------- game flow ----------
+function newP(i){const c=C.cls[i],st=CL[c].m.map((m,j)=>{const o=(C.pSt[i]||[])[j];return o==null||o===''?Math.max(0,C.startSt+m):Math.max(0,Math.min(20,+o))}),mi=(b,r)=>({b,r:0,aff:[],att:null});let af=d(8)-1;if(af==7)af=ri(7);if(AFF[i]!=null)af=AFF[i];
+const w0=d(8)-1,pw=(C.pW||[])[i],w=pw!=null&&pw>=0&&pw<8?pw:w0,df=d(6),eq={w:mi(w),a:null,s:null};if(df==3)eq.s=mi(8);if(df==4)eq.a=mi(11);if(df==5)eq.s=mi(9);if(df==6)eq.a=mi(12);
+const p={id:i,isP:1,n:C.names[i],col:['#e8b84a','#5ec1e8','#e86a5e','#9be85e','#c58ae8','#e8e8e8'][i],cls:c,st,lv:1,tsr:0,sr:(C.pSR[i]==null||C.pSR[i]===''?C.startSR:+C.pSR[i]),lives:C.lives,cnt:[af],sts:[],sk:[],picks:1+(c=='Mage'?1:0),eq,pack:{g:[],c:[]},aff:af,trail:[],keys:0,alive:1,ss:0,sh:{},shroud:0,skipMove:0,pos:Object.keys(T).find(k=>T[k].sp==i+1),free:1};
+p.mh=mh(p);p.hp=p.mh;p.trail=[p.pos];return p}
+function start(){TED=0;gen();rng=mk(C.seed+1);$('#app').innerHTML='<div id=game><div id=bd></div><div id=side></div></div>';G={pl:[...Array(C.players)].map((_,i)=>newP(i)),round:0,ti:0,ord:[],mv:0,rolled:0,act:0,eng:null,log:[],piles:{},q:[],dr:{},storm:0,shops:{},boss:{on:0},n0:Object.keys(MB).length};SPI.forEach(x=>G.log.push(x));
+L(`Match begins on a ${R}-ring board (seed ${C.seed}).`);newRound()}
+function newRound(){G.round++;G.dr={};if(C.storm&&G.round>C.stormS&&(G.round-C.stormS-1)%C.stormI==0&&G.storm<R-1){G.storm++;L(`⚡ The Storm closes in: rings ${R-G.storm+1}–${R} are Stormed`)}
+const rs=G.pl.filter(p=>p.alive).map(p=>({p,x:d(20)+md(p,2)})).sort((a,b)=>b.x-a.x||sv(b.p,2)-sv(a.p,2)||d(2)-1.5);G.ord=rs.map(r=>r.p.id);G.ti=0;L(`— Round ${G.round} — initiative: ${rs.map(r=>r.p.n+' '+r.x).join(', ')}`);beginTurn()}
+function beginTurn(){const p=cur();G.mv=0;G.rolled=0;G.act=0;G.eng=null;G.tg=null;p.free=1;p.ad=0;
+for(const s of p.sts.slice()){if(s.k=='Burn'){L(`${p.n} burns`);hurt(p,d(6))}if(s.k=='Shock'){L(`${p.n} is shocked`);hurt(p,d(4))}}
+for(const s of['w','a','s'])if(p.eq[s]&&p.eq[s].aff.includes('Recuperating'))p.hp=Math.min(p.mh,p.hp+1);
+const t=T[p.pos];if(stormed(t.ring)){const x=d(6)+(R-t.ring);L(`${p.n} is caught in the Storm for ${x}`);hurt(p,Math.max(1,x))}
+if(p.skipMove){p.skipMove=0;G.rolled=1;L(`${p.n} skips movement (rewind)`)}flush()}
+const gone=p=>!p.alive||p.hp<=0;
+function endTurn(){const p=cur();if(G.eng&&!G.act&&MB[G.eng]&&MB[G.eng].hp>0&&p.hp>0)mobHit(MB[G.eng],p);
+if(p.alive){p.trail.push(p.pos);p.trail=p.trail.slice(-(C.echo+1));p.ss=T[p.pos].sp?p.ss+1:0;p.sts.forEach(x=>x.d--);p.sts=p.sts.filter(x=>x.d>0)}G.tg=null;G.next=1;flush()}
+function advance(){G.ti++;while(G.ti<G.ord.length&&!cur().alive)G.ti++;if(G.ti>=G.ord.length){mobPhase();G.nr=1;flush()}else beginTurn()}
+function mobHit(m,p){if(T[m.pos]&&p.pos==m.pos||hd(m.pos,p.pos)<=(m.mini?2:1))atk(m,p,{st:0})}
+const sanc=p=>T[p.pos].sp&&p.ss<C.sanct&&!stormed(T[p.pos].ring),shr=p=>G.round<=p.shroud;
+function dmap(src,ok){const dd={[src]:0},q=[src];while(q.length){const k=q.shift();for(const n of nb(k))if(dd[n]===undefined&&ok(T[n],n)){dd[n]=dd[k]+1;q.push(n)}}return dd}
+function los(a,b){const n=hd(a,b),[q1,r1]=kq(a),[q2,r2]=kq(b);for(let i=1;i<n;i++){const f=i/n,x=q1+(q2-q1)*f+1e-6,z=r1+(r2-r1)*f+1e-6,y=-x-z;let rx=Math.round(x),ry=Math.round(y),rz=Math.round(z);const dx=Math.abs(rx-x),dy=Math.abs(ry-y),dz=Math.abs(rz-z);if(dx>dy&&dx>dz)rx=-ry-rz;else if(dy>dz)ry=-rx-rz;else rz=-rx-ry;const t=T[rx+','+rz];if(t&&t.t=='W')return 0}return 1}
+function mobPhase(){if(C.mode=='Sentinel'){G.boss.on&&bossPhase();return}
+const mobs=Object.values(MB).filter(m=>m.hp>0).sort((a,b)=>b.cr-a.cr||T[a.pos].ring-T[b.pos].ring||T[a.pos].i-T[b.pos].i);
+const valid=G.pl.filter(p=>p.alive&&p.hp>0&&!shr(p)&&!T[p.pos].sp);
+for(const m of mobs){if(m.hp<=0)continue;for(const s of m.sts.slice()){if(s.k=='Burn'||s.k=='Shock')hurt(m,d(s.k=='Burn'?6:4));}if(m.hp<=0)continue;m.sts.forEach(s=>s.d--);m.sts=m.sts.filter(s=>s.d>0);
+const ag=m.mini?3:C.mode=='Hunter'?C.aggroH:C.aggroT,rg=m.mini?2:1,ok=(t,k)=>k==m.pos||((t.t=='P'||t.t=='C')&&!t.sp&&!t.mob);
+let best=null;for(const p of valid){if(p.hp<=0)continue;const dm=dmap(p.pos,(t,k)=>ok(t,k)||k==p.pos),dd=dm[m.pos];if(dd==null)continue;
+const c={p,dd,pr:[dd,p.id==m.ld?0:1,p.hp,dv(p),d(6)]};if(!best||c.pr[0]<best.pr[0]||(c.pr[0]==best.pr[0]&&(c.pr[1]<best.pr[1]||c.pr[1]==best.pr[1]&&(c.pr[2]<best.pr[2]||c.pr[2]==best.pr[2]&&(c.pr[3]<best.pr[3]||c.pr[3]==best.pr[3]&&c.pr[4]>best.pr[4])))))best=c;best.dm=best.p==p?dm:best.dm}
+if(m.s=='D'&&best&&(best.dd<=ag||m.hit))m.s='A';
+if(m.s=='A'){if(!best||best.dd>ag+2){if(++m.ms>=2)m.s='R'}else{m.ms=0;
+if(best.dd<=rg&&los(m.pos,best.p.pos))atk(m,best.p,{st:0});
+else if(!m.mini){const nx=nb(m.pos).filter(k=>ok(T[k],k)&&k!=m.pos&&best.dm[k]!=null&&best.dm[k]<best.dd).sort((a,b)=>best.dm[a]-best.dm[b]||T[a].ring-T[b].ring||T[a].i-T[b].i)[0];
+if(nx&&(C.mode=='Hunter'||hd(m.home,nx)<=C.leash))mvMob(m,nx)}}}
+else if(m.s=='R'&&!m.mini){if(m.pos==m.home){m.hp=m.mhp;m.s='D'}else{const dm=dmap(m.home,(t,k)=>ok(t,k)||k==m.home),nx=nb(m.pos).filter(k=>(ok(T[k],k)||k==m.home)&&!T[k].mob&&dm[k]<dm[m.pos]).sort((a,b)=>dm[a]-dm[b])[0];if(nx)mvMob(m,nx);if(m.pos==m.home){m.hp=m.mhp;m.s='D'}}}
+m.hit=0}
+if(C.resp&&G.round%C.respI==0){const nAlive=()=>Object.values(MB).filter(m=>m.hp>0).length;for(let n=d(3);n>0&&nAlive()<G.n0;n--){const fr=Object.keys(T).filter(k=>{const t=T[k];return t.t=='P'&&!t.mob&&!t.sp&&t.ring>R/2&&G.pl.every(p=>!p.alive||hd(p.pos,k)>2)});if(!fr.length)break;const k=pk(fr),t=T[k],id='r'+G.round+n,cr=d(4)+dep(t.ring);MB[id]={id,n:'Mob',cr,el:BE[t.b][d(6)<=3?0:1],hp:19+9*cr,mhp:19+9*cr,home:k,pos:k,s:'D',sts:[],ms:0};t.mob=id;L(`A Mob (CR ${cr}) respawns`)}}
+G.boss.on&&bossPhase()}
+function mvMob(m,k){T[m.pos].mob=null;m.pos=k;T[k].mob=m.id}
+function bossPhase(){const b=G.boss,al=G.pl.filter(p=>p.alive&&p.hp>0);if(!al.length)return;const av=Math.ceil(al.reduce((s)=>s+d(6),0)/al.length),ag=al.slice().sort((a,b)=>(G.dr[b.id]||0)-(G.dr[a.id]||0)||d(2)-1.5)[0],M=Math.floor((Math.min(20,1+b.cr)-10)/2);
+L(`Boss Mutiny roll: ${av}`);const hit=(p,n)=>dmgTo(p,dn(n,20)+M,b.el,b,{});
+if(av==1)hit(ag,1);else if(av<=3)hit(ag,2);else if(av<=5){hit(ag,3);ag.cnt.splice(0,2)}else al.filter(p=>T[p.pos].ring<=1).forEach(p=>hit(p,2))}
+// ---------- player actions ----------
+function reach(p){if(G.eng||!G.rolled||gone(p))return{};const s=p.pos,best={[s]:0},q=[s];
+while(q.length){q.sort((a,b)=>best[a]-best[b]);const k=q.shift(),c=best[k];const t=T[k];if(k!=s&&((t.mob&&MB[t.mob].hp>0)||(rival(k,p)&&!t.sp)))continue;
+for(const n of nb(k)){const u=T[n];if(u.t=='W'||u.t=='B')continue;const cost=c+(u.t=='O'?2:1);if(cost>G.mv)continue;if(best[n]===undefined||cost<best[n]){best[n]=cost;q.push(n)}}}delete best[s];return best}
+function moveTo(k){const p=cur(),r=reach(p);if(r[k]==null)return;G.mv-=r[k];p.pos=k;const t=T[k];
+if(t.mob&&MB[t.mob].hp>0){const m=MB[t.mob];G.eng=m.id;const a=d(20)+md(p,2),b=d(20)+md(m,2);L(`${p.n} engages ${m.n} (CR ${m.cr}). Initiative ${a} vs ${b}`);if(b>a)mobHit(m,p)}
+else if(rival(k,p)&&!t.sp){G.mv=0;L(`CLASH: ${p.n} shares a tile with a rival. Movement ends.`)}
+const pl=G.piles[k];if(pl&&!G.eng){for(const it of pl.i.slice()){const ok=it.c?p.pack.c.length<C.pc:(!p.eq[GB[it.b][1]]||p.pack.g.length<C.pg);if(ok){pl.i.splice(pl.i.indexOf(it),1);give(p,it)}}if(pl.sr){p.sr+=pl.sr;L(`${p.n} takes ${pl.sr} SR from the pile`);pl.sr=0}p.keys+=pl.k;pl.k=0;if(!pl.i.length)delete G.piles[k]}
+flush()}
+function targets(p,mn,mx,pvp){const out={};const add=(k,e)=>{if(e.hp>0&&los(p.pos,k)){const dd=hd(p.pos,k);if(dd>=mn&&dd<=mx)out[k]=e}};
+for(const m of Object.values(MB))if(m.hp>0)add(m.pos,m);if(G.boss.on)add('0,0',G.boss);
+if(pvp!==false&&!sanc(p)&&!shr(p))for(const q of G.pl)if(q!==p&&q.alive&&q.hp>0&&!sanc(q)&&!shr(q))add(q.pos,q);return out}
+function tg(title,mn,mx,fn,aoe){const p=cur();G.tg={title,t:targets(p,mn,mx),fn,aoe};if(!Object.keys(G.tg.t).length){L('No valid targets in range / line of sight.');G.tg=null}draw()}
+function after(){G.act=1;G.tg=null;const p=cur();if(G.eng&&MB[G.eng]&&MB[G.eng].hp>0&&p.hp>0)mobHit(MB[G.eng],p);flush()}
+const A={roll(){const p=cur(),die=CL[p.cls].d,r=d(die),m=Math.max(2,r+spd(p)+p.sts.reduce((n,s)=>n+(s.k=='Chill'?-1:0),0)+['w','a','s'].filter(s=>p.eq[s]&&p.eq[s].aff.includes('Fleet')).length);G.mv=m;G.rolled=1;L(`${p.n} rolls Move d${die}: ${r} (+Speed ${spd(p)}) → ${m} tiles`);draw()},
+end:endTurn,
+atk(){const p=cur(),[mn,mx]=rng2(p),w=p.eq.w,b=w?w.b:0,g=GB[b];tg('Attack',mn,mx,(t)=>{const si=g[7]=='d'?2:g[7]=='s'?(b==0?2:0):C.caster;let n=b==5?2:(b==0&&!t.isP)?2+(d(6)>=4?1:0):1;for(let i=0;i<n&&t.hp>0;i++)atk(p,t,{st:b==0?2:si});after()})},
+skill(i){const p=cur(),s=SK[i],im=s[4],aff0=!p.ad&&true,cost=Math.max(1,s[3]-(p.ad?0:0));const c=p.cnt.reduce((o,e)=>(o[e]=(o[e]||0)+1,o),{});
+const opts=Object.keys(c).filter(e=>c[e]>=(e==p.aff&&!p.ad?Math.max(1,s[3]-1):s[3])).map(e=>[`Spend ${EL[e]} (${c[e]} held)`,()=>{const need=e==p.aff&&!p.ad?Math.max(1,s[3]-1):s[3];const pay=()=>{for(let k=0;k<need;k++)p.cnt.splice(p.cnt.indexOf(+e),1);if(+e==p.aff)p.ad=1};const el=+e;
+if(im.k=='buf'){pay();const du=d(4),st=p.sts.filter(x=>x.k!=im.b);st.push({k:im.b,el,d:du});p.sts=st;L(`${p.n} casts ${s[1]} (${EL[el]}, ${du} rds)`);after()}
+else if(im.k=='heal'){pay();const x=d(20)+md(p,4);p.hp=Math.min(p.mh,p.hp+x);L(`${p.n} mends ${x} HP`);after()}
+else tg(s[1],0,im.r+(has(p,'Edge')?1:0),(t,k)=>{pay();const raw=dn(im.n,20)+im.m*md(p,im.s);const victims=[...new Set(Object.values(G.tg.t))];const ctr=T[k]?k:null;
+const hitAll=im.a?Object.keys(targets(p,0,9,true)).filter(x=>hd(x,k)<=im.a).map(x=>targets(p,0,9,true)[x]):[t];
+for(const v of hitAll)if(v.hp>0&&v!==p)atk(p,v,{st:im.s,skill:1,pb:1,raw,el,refund:1,ign:im.ign});after()})}]);
+if(!opts.length)return L('Not enough Counters of one element.'),draw();ask(`${s[1]} — pick element`,opts)},
+learn(){const p=cur(),el=SK.map((s,i)=>({s,i})).filter(({s,i})=>s[4]&&C.sk[s[1]]&&!p.sk.includes(i)&&[1,5,9,13,17][s[2]-1]<=p.lv&&(s[2]==1||p.sk.some(j=>SK[j][0]==s[0]&&SK[j][2]==s[2]-1)));
+if(!el.length)return L('No learnable skills.'),draw();ask(`Learn a skill (${p.picks} pick${p.picks>1?'s':''})`,el.map(({s,i})=>[`${s[0]}: ${s[1]} (T${s[2]}, ${s[3]} counters)`,()=>{p.sk.push(i);p.picks--;L(`${p.n} learns ${s[1]}`)}]))},
+chest(){const p=cur(),t=T[p.pos];chest(p,dep(t.ring),C.tier[t.tier]);t.t='P';after()},
+channel(){const p=cur(),e=d(8)-1,add=x=>{if(p.cnt.length<4)p.cnt.push(x);L(`${p.n} channels ${EL[x]}`);after()};if(e==7)ask('Wild: choose',EL.map((n,i)=>[n,()=>add(i)]));else add(e)},
+rest(){const p=cur(),x=d(6)+pbOf(p.lv);p.hp=Math.min(p.mh,p.hp+x);G.mv=0;L(`${p.n} rests +${x} HP`);after()},
+shrine(){const p=cur(),x=Math.max(0,dn(2,20)+md(p,4));p.hp=Math.min(p.mh,p.hp+x);p.sh[p.pos]=G.round+3;L(`${p.n} heals ${x} at the Shrine`);after()},
+retreat(){const p=cur(),x=dn(2,6)+md(p,2);if(x>=7){G.eng=null;L(`${p.n} retreats (${x})`);G.act=1}else{L(`${p.n} fails to retreat (${x})`);after()}draw()},
+unlock(){const p=cur(),al=G.pl.filter(q=>q.alive),cr=Math.max(4,...al.map(q=>q.lv))+3,e=d(8)-1;G.boss={on:1,boss:1,n:'The Boss',cr,el:e==7?ri(7):e,hp:(19+9*cr)*al.length,mhp:(19+9*cr)*al.length,sts:[],pos:'0,0'};L(`⚠ GLOBAL BREACH! Boss CR ${cr} (${EL[G.boss.el]}) awakens with ${G.boss.hp} HP`);after()},
+equip(i){const p=cur(),it=p.pack.g[i],s=GB[it.b][1],old=p.eq[s];p.eq[s]=it;p.pack.g.splice(i,1);if(old)p.pack.g.push(old);sync(p);L(`${p.n} equips ${nm(it)}`);if(G.eng)after();else draw()},
+use(i){const p=cur(),it=p.pack.c[i],P=it.r+1,big=it.kd==7||it.kd==8;if(big&&G.act)return;if(!p.free&&G.act&&!big)return L('Action already used.'),draw();const fin=()=>{p.pack.c.splice(p.pack.c.indexOf(it),1);if(p.free&&!big)p.free=0;else G.act=1;L(`${p.n} uses ${nm(it)}`);flush()};
+switch(it.kd){case 0:p.hp=Math.min(p.mh,p.hp+d(20)+2*P);break;case 1:for(let k=1+Math.floor(P/2);k>0;k--)if(p.cnt.length<4)p.cnt.push(ri(7));break;case 2:G.mv+=1+Math.floor(P/2);break;case 3:p.sts.push({k:'Iron',v:Math.ceil(P/2),d:d(4)});break;case 4:p.sts.push({k:'Might',v:P,d:d(3)});break;
+case 5:{const bad=p.sts.filter(s=>['Chill','Burn','Gale','Stagger','Shock'].includes(s.k));if(P<=2)bad.slice(0,1).forEach(b=>p.sts.splice(p.sts.indexOf(b),1));else bad.forEach(b=>p.sts.splice(p.sts.indexOf(b),1));if(P>=4)p.sts.push({k:'Imm',d:2});break}
+case 6:p.sts.push({k:'Ward',el:ri(7),d:d(4)});break;case 9:p.lives=Math.min(C.cap,p.lives+1);if(P==5)p.hp=Math.min(p.mh,p.hp+Math.ceil(p.mh/2));break;
+case 8:{const v=validTrail(p).filter(x=>!x.bad);if(!v.length)return L('No valid Echo tile.'),draw();return ask('Recall Sigil',v.map(x=>[`${x.i} turn(s) ago (${x.k})`,()=>{p.pos=x.k;G.eng=null;fin()}]))}
+case 7:return tg('Volatile Flask',0,3,t=>{const e=ri(7);const a=dn(2,6),b=dn(1,6);const tot=a;L(`${p.n} throws a Flask: ${t.isP?'2d6='+tot:'PvE auto-hit'}`);if(!t.isP||tot>=C.hit)dmgTo(t,d(20)+2*P,e,p,{skill:1});p.pack.c.splice(p.pack.c.indexOf(it),1);L(`${p.n} throws ${nm(it)}`);after()})}
+fin()},
+shop(){const p=cur(),k=p.pos,at=!!T[k].shop&&!stormed(T[k].ring);let s=G.shops[k];if(!s||G.round-s.r>=4){s=G.shops[k]={r:G.round,st:[0,1,2].map(()=>mkCons(0,0,true))}}
+const o=[];for(let i=0;i<6;i++){const v=p.st[i]+1;if(v>20)continue;const pr=v==10?C.stat10:PR[v];o.push([`+1 ${SN[i]} → ${v} (${Math.round(pr*C.shopM)} SR)`,()=>{const c=Math.round(pr*C.shopM);if(!at)L('Stand on a $ tile to buy.');else if(!(c>=0)||!(p.sr>=c))L('Not enough SR.');else{p.sr-=c;p.st[i]++;sync(p);L(`${p.n} buys ${SN[i]} ${v}`)}A.shop()}])}
+s.st.forEach((it,i)=>o.push([`${nm(it)} (${Math.round(CP[it.r]*C.shopM)} SR)`,()=>{const c=Math.round(CP[it.r]*C.shopM);if(!at)L('Stand on a $ tile to buy.');else if(!(c>=0)||!(p.sr>=c))L('Not enough SR.');else if(p.pack.c.length>=C.pc)L('Pack full.');else{p.sr-=c;p.pack.c.push(it);s.st.splice(i,1)}A.shop()}]));
+if(C.skAcq!='levelPick')SK.forEach((sk,i)=>{if(!sk[4]||!C.sk[sk[1]]||p.sk.includes(i))return;const pr=Math.round(C.skP[sk[2]-1]*C.shopM),lv=[1,5,9,13,17][sk[2]-1];if(p.lv<lv)return;const pre=sk[2]==1||p.sk.some(j=>SK[j][0]==sk[0]&&SK[j][2]==sk[2]-1);const why=!at?'browse only':p.lv<lv?'needs level '+lv:!pre?'needs a tier '+(sk[2]-1)+' '+sk[0]+' skill':!(pr>=0)||!(p.sr>=pr)?'not enough SR':'';o.push([`SKILL ${sk[0]}: ${sk[1]} T${sk[2]}, ${sk[3]} counters (${pr} SR)${why?' [locked: '+why+']':''}`,()=>{if(why)L('Cannot buy '+sk[1]+': '+why+'.');else{p.sr-=pr;p.sk.push(i);L(`${p.n} buys skill ${sk[1]} (${pr} SR)`)}A.shop()}])});
+o.push(['Close',()=>{}]);ask(`Soul Resonance Shop (Soul Corridor) — ${p.sr} SR held${at?'':' — BROWSE ONLY: stand on a $ tile to buy'}`,o)},
+legend(){ask('Legend',['▲ Wall (blocks movement and sight)','✕ Obstacle','☠ Boss tile','▣ Chest (colour = tier)','⌂ Spawn / Sanctuary','$ Soul Corridor: Soul Resonance Shop','✚ Shrine','✦ Loot pile','Mob token: ring colour = element, number = CR, ★ = Mini-Boss','Player token: coloured disc with initial, white ring = current turn','Top-left tray: dice just rolled'].map(l=>[l,()=>{}]).concat([['Close',()=>{}]]))}};
+// ---------- game UI ----------
+function draw(){if(!G)return;const m=$('#modal');
+if(G.over){m.hidden=0;m.innerHTML=`<div><h1>${G.over.n} wins!</h1><p>Level ${G.over.lv}, ${G.over.tsr} Total SR.</p><button data-i=0>Back to GM setup</button></div>`;m.onclick=()=>{G=null;m.hidden=1;setup()}}
+else if(G.ask){m.hidden=0;m.onclick=mclick;m.innerHTML=`<div><b>${G.ask.t}</b>${G.ask.o.map((o,i)=>`<button data-i=${i}>${o[0]}</button>`).join('')}</div>`}else m.hidden=1;
+const p=cur();if(!p)return;const hl={};if(G.tg)for(const k in G.tg.t)hl[k]='t';else{const r=reach(p);for(const k in r)hl[k]='r'}
+const t=T[p.pos],bar=e=>`<div class=bar><i style="width:${Math.max(0,100*e.hp/(e.mh||e.mhp))}%"></div>`,dis=(c)=>c?'':'disabled',ok=!G.ask&&!G.over&&!gone(p);
+const act=!G.act&&ok,eq=['w','a','s'].map(s=>p.eq[s]?`<div style="color:${RC[p.eq[s].r]}">${nm(p.eq[s])}${p.eq[s].aff.length?' — '+p.eq[s].aff.join(', '):''}</div>`:'').join('');
+const learn=p.picks>0&&!G.eng;
+$('#bd').innerHTML=board({pl:G.pl,cur:G.ord[G.ti],hl,piles:G.piles,boss:G.boss,storm:G.storm});applyCam();
+$('#side').innerHTML=`<h1>Round ${G.round}</h1><div class=row><button data-cam=in title="Zoom in">＋</button><button data-cam=out title="Zoom out">－</button><button data-cam=rs>Reset view</button><button id=svb>Save / Load</button></div><div class=card><b style="color:${p.col}">${p.n}</b> ${p.cls} L${p.lv} (PB+${pbOf(p.lv)}) ${'♥'.repeat(Math.max(0,p.lives))}<br>HP ${p.hp}/${p.mh}${bar(p)}SR ${p.sr} (total ${p.tsr}) · Keys ${p.keys}<br>${SN.map((n,i)=>`${n} ${sv(p,i)}`).join(' ')}<br>DV ${dv(p)} · Range ${rng2(p).join('–')} · Move left ${G.mv}<br>Counters: ${p.cnt.map(e=>`<span style="color:${EC[e]}">●</span>${EL[e]}`).join(' ')||'none'}<br>Status: ${p.sts.map(s=>s.k+s.d).join(', ')||'—'}${shr(p)?' · Shrouded':''}${sanc(p)?' · Sanctuary':''}<br>Affinity ${EL[p.aff]} ${eq}</div>
+<div class=row><button title="Roll your Move Die; result is your movement" onclick="A.roll()" ${dis(ok&&!G.rolled)}>Roll move (d${CL[p.cls].d})</button><button title="Attack: PvP = 2d6 (7+ hits); PvE auto-hits; then damage die" onclick="A.atk()" ${dis(act)}>Attack</button><button title="Leave engagement" onclick="A.retreat()" ${dis(act&&G.eng)}>Retreat</button><button title="Open the chest on your tile" onclick="A.chest()" ${dis(act&&t.t=='C')}>Open chest</button><button title="Channel: gain an Advantage Counter" onclick="A.channel()" ${dis(act)}>Channel</button><button title="Rest: recover HP (not while engaged)" onclick="A.rest()" ${dis(act&&!G.eng)}>Rest</button><button title="Use the Shrine on your tile (house rule, not in Guide)" onclick="A.shrine()" ${dis(act&&t.sh&&(p.sh[p.pos]||0)<=G.round)}>Shrine</button><button onclick="A.shop()" ${dis(ok)} title="Soul Resonance Shop: buy skills, +1 stats, consumables. Buying needs a $ tile (Soul Corridor); elsewhere you can browse.">Soul Resonance Shop</button><button onclick="A.legend()" title="What every icon means">? Legend</button><button title="Unlock the Boss (ring 1, needs enough Keys)" onclick="A.unlock()" ${dis(act&&t.ring==1&&p.keys>=C.K&&!G.boss.on)}>Unlock Boss</button><button onclick="A.learn()" ${dis(ok&&learn&&C.skAcq!='shop')} title="Spend a level-up pick on a skill">Learn skill (${p.picks})</button></div>
+<div class=card>Skills: ${p.sk.map(i=>`<button onclick="A.skill(${i})" ${dis(act)}>${SK[i][1]}</button>`).join(' ')||'none'}</div>
+<div class=card>Pack: ${p.pack.g.map((it,i)=>`<button style="border-color:${RC[it.r]}" onclick="A.equip(${i})" ${dis(ok)} title="Equip">${nm(it)}</button>`).join(' ')} ${p.pack.c.map((it,i)=>`<button style="border-color:${RC[it.r]}" onclick="A.use(${i})" ${dis(ok)}>${nm(it)}</button>`).join(' ')}<br><small>Free consumable: ${p.free?'available':'used'}</small></div>
+${G.tg?`<div class=card>Targeting: ${G.tg.title} — click a red tile <button onclick="G.tg=null;draw()">Cancel</button></div>`:''}
+<button onclick="A.end()" ${dis(ok&&!G.tg)} style="width:100%;background:var(--ac);color:#111">End turn</button>
+<div class=card>${G.pl.map(q=>`<div style="color:${q.col}">${q.n}${q.alive?` ${'♥'.repeat(q.lives)} L${q.lv} HP ${q.hp}/${q.mh} SR ${q.tsr}`:' ☠'}</div>`).join('')}</div><div id=log>${G.log.slice(-40).join('<br>')}</div>`;$('#log').scrollTop=1e5}
+function mclick(e){const i=e.target.dataset.i;if(i==null||!G.ask)return;const a=G.ask;G.ask=null;a.o[i][1]();if(!G.ask)flush();draw()}
+document.addEventListener('click',e=>{const k=e.target.dataset&&e.target.dataset.k;if(!G||G.ask||G.over||!k||e.target.tagName!='polygon')return;
+if(G.tg){const t=G.tg.t[k];if(t){const f=G.tg.fn;f(t,k)}return}moveTo(k)});
+document.addEventListener('change',e=>{if(G)return;const t=e.target,ds=t.dataset;if(ds.pn!=null)C.names[ds.pn]=t.value;else if(ds.pc!=null)C.cls[ds.pc]=t.value;else if(ds.sk)C.sk[ds.sk]=t.checked;else if(ds.pw!=null){C.pW=C.pW||[];C.pW[ds.pw]=t.value===''?null:+t.value}else if(ds.psr!=null)C.pSR[ds.psr]=t.value===''?null:Math.max(0,+t.value);else if(ds.pst!=null){const[a,b]=ds.pst.split('.');C.pSt[a][b]=t.value===''?null:Math.max(0,Math.min(20,+t.value))}else if(ds.k){const v=t.type=='checkbox'?+t.checked:t.tagName=='SELECT'?t.value:+t.value;if(ds.i!=null)C[ds.k][ds.i]=v;else C[ds.k]=v;if(ds.k=='players')setup();else prev();return}
+if(ds.pn!=null||ds.pc!=null||ds.sk||ds.pw!=null||ds.psr!=null||ds.pst!=null)return});
+document.addEventListener('click',e=>{if(G)return;const t=e.target,ds=t.dataset;if(ds.t){tab=ds.t;setup()}if(ds.pre){C=Object.assign(newC(),PRE[ds.pre]);setup()}
+if(t.id=='rs'){C.seed=(C.seed*7919+13)%100000;setup()}if(t.id=='ex')$('#io').value=JSON.stringify(C);
+if(t.id=='im')try{C=Object.assign(newC(),JSON.parse($('#io').value));setup()}catch(x){$('#io').value='Invalid JSON'}if(t.id=='go')start();if(t.id=='simb')simView();if(t.id=='edb')edView();if(t.id=='ted')tedView()});
+
+function applyCam(){const s=$('#sv');if(!s)return;if(!s.dataset.b)s.dataset.b=s.getAttribute('viewBox');const[a,b,w,h]=s.dataset.b.split(' ').map(Number),z=cam.z;s.setAttribute('viewBox',`${a+w/2-w/2/z+cam.x} ${b+h/2-h/2/z+cam.y} ${w/z} ${h/z}`)}
+function zoom(f){cam.z=Math.min(40,Math.max(.02,cam.z*f));applyCam()}
+let dg=null;
+document.addEventListener('pointerdown',e=>{if((G||TED)&&e.target.closest&&e.target.closest('#bd')){dg={x:e.clientX,y:e.clientY};moved=0}});
+document.addEventListener('pointermove',e=>{if(!dg)return;const s=$('#sv');if(!s)return;const dx=e.clientX-dg.x,dy=e.clientY-dg.y;if(!moved&&Math.hypot(dx,dy)<6)return;moved=1;const r=s.getBoundingClientRect(),v=s.viewBox.baseVal,k=Math.max(v.width/r.width,v.height/r.height);cam.x-=dx*k;cam.y-=dy*k;dg.x=e.clientX;dg.y=e.clientY;applyCam()});
+document.addEventListener('pointerup',()=>{dg=null});
+document.addEventListener('click',e=>{if(moved){moved=0;e.stopPropagation();e.preventDefault()}},true);
+document.addEventListener('wheel',e=>{if((G||TED)&&e.target.closest&&e.target.closest('#bd')){e.preventDefault();zoom(e.deltaY<0?1.15:1/1.15)}},{passive:false});
+// Save/Load: state is plain JSON; RNG position saved so replays stay deterministic
+function saveTxt(){if(G.ask||G.tg||G.q.length||G.over)return'Finish the open choice or targeting first, then save again.';return JSON.stringify({v:1,C,T,R,MB,G,rs:rng.g()})}
+function loadTxt(t){const o=JSON.parse(t);if(o.v!==1||!o.G)throw 0;C=o.C;T=o.T;R=o.R;MB=o.MB;G=o.G;G.ask=null;G.tg=null;rng=mk(0);rng.s(o.rs);cam={x:0,y:0,z:1};$('#app').innerHTML='<div id=game><div id=bd></div><div id=side></div></div>';draw()}
+function ioModal(msg){const m=$('#modal');m.hidden=0;m.innerHTML=`<div><b>Save / Load</b><p><small>${msg||'Copy this text to keep your game. Paste saved text and press Load to restore.'}</small></p><textarea id=sio rows=8 style="width:100%">${saveTxt().replace(/</g,'&lt;')}</textarea><button id=sld>Load from text</button><button id=scl>Close</button></div>`}
+document.addEventListener('click',e=>{const t=e.target;if(!G&&!TED)return;if(t.dataset&&t.dataset.cam){t.dataset.cam=='in'?zoom(1.25):t.dataset.cam=='out'?zoom(.8):(cam={x:0,y:0,z:1},applyCam())}
+if(t.id=='svb')ioModal();if(t.id=='scl')draw();if(t.id=='sld'){try{loadTxt($('#sio').value)}catch(x){ioModal('Could not read that save text.')}}});
+document.addEventListener('click',e=>{if(!TED)return;const k=e.target.dataset&&e.target.dataset.k;if(k)tedClick(k)});
+document.addEventListener('keydown',e=>{if(e.key=='Escape'&&G&&G.tg){G.tg=null;draw()}});
+C=newC();setup();
+if(location.search.includes('seed=')){C.seed=+new URLSearchParams(location.search).get('seed');setup()}
+</script></body></html>
