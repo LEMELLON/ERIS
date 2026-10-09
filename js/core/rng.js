@@ -37,3 +37,13 @@ export function createRoller(seed = 1, physicalQueue = null) {
   };
   return roller;
 }
+
+// ---- Module-level API (handoff section 3): one shared roller for the whole app ----
+// import { roll, setSeed } from '../core/rng.js'
+let shared = createRoller(1);
+export const roll = (sides, label = '', group = null) => shared.roll(sides, label, group);
+export const setSeed = (seed, physicalQueue = null) => { shared = createRoller(seed, physicalQueue); return shared; };
+export const getRngState = () => shared.getState();
+export const setRngState = s => shared.setState(s);
+export const setPhysicalQueue = q => { shared.physicalQueue = q; };
+export const getRoller = () => shared;

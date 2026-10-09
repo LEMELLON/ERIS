@@ -8,6 +8,7 @@ export const BALANCE = {
     damageDie: 6,
     damageBonus: cr => cr,
     mp: cr => 10 + 5 * cr,
+    attackBonus: cr => cr, // PLACEHOLDER: added to the enemy's 2d6 vs the player's Defense
   },
   // GDD: Mob SR = min(10*CR, 3*CR+21, CR+41)
   mobSR: cr => Math.min(10 * cr, 3 * cr + 21, cr + 41),

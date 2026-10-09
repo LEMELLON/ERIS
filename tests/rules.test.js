@@ -199,3 +199,68 @@ test('guardians, key, aggro and final blow', () => {
   r = hitAion(r.aion, 'Orpheus', 20);
   assert.equal(r.winner, 'Orpheus');
 });
+
+import * as rngMod from '../js/core/rng.js';
+test('module-level roll API exists and is seeded', () => {
+  rngMod.setSeed(7);
+  const a = [rngMod.roll(20), rngMod.roll(6)];
+  rngMod.setSeed(7);
+  assert.deepEqual(a, [rngMod.roll(20), rngMod.roll(6)]);
+  const s = rngMod.getRngState(); const x = rngMod.roll(20); rngMod.setRngState(s);
+  assert.equal(rngMod.roll(20), x);
+});
+
+import { startEncounter, currentActor, nextTurn, recordDamage, startTurn, spendMovement, useAction } from '../js/rules/turn.js';
+import { enemyTurn, mobStats } from '../js/rules/enemy-ai.js';
+
+test('initiative order, rounds and aggro damage rollover', () => {
+  const A = createCharacter(CHAMPIONS.atalanta), B = createCharacter(CHAMPIONS.achilles);
+  // d20 rolls: Atalanta 5 (+3 AGI mod = 8), Achilles 7 (+1 = 8), mob 2 -> tie broken by higher AGI mod
+  let enc = startEncounter(fixed(5, 7, 2), [{ id: 'A', ch: A }, { id: 'B', ch: B }, { id: 'M', initMod: 0 }]);
+  assert.deepEqual(enc.order, ['A', 'B', 'M']);
+  enc = recordDamage(enc, 'A', 7);
+  enc = nextTurn(enc); enc = nextTurn(enc); assert.equal(currentActor(enc), 'M');
+  enc = nextTurn(enc);
+  assert.equal(enc.round, 2);
+  assert.equal(currentActor(enc), 'A');
+  assert.deepEqual(enc.damageLastRound, { A: 7 });
+  assert.deepEqual(enc.damageThisRound, {});
+  // downed combatants are skipped
+  enc = nextTurn(enc, id => id === 'B');
+  assert.equal(currentActor(enc), 'M');
+});
+
+test('turn budgets: movement and one action', () => {
+  const s = startTurn({ ...createCharacter(CHAMPIONS.achilles), statuses: [] });
+  assert.equal(s.turn.movementLeft, 3);
+  assert.equal(spendMovement(s.turn, 4).ok, false);
+  const m = spendMovement(s.turn, 2);
+  assert.equal(m.turn.movementLeft, 1);
+  const a = useAction(m.turn);
+  assert.equal(useAction(a.turn).ok, false);
+});
+
+test('start of turn ticks DoTs and summons', () => {
+  const ch = applyStatus({ ...createCharacter(CHAMPIONS.medea), hp: 20 }, 'ignited');
+  const s = startTurn(ch, [{ turns: 1, hp: 1 }, { turns: 3, hp: 1 }]);
+  assert.equal(s.dotDamage, 2);
+  assert.equal(s.ch.hp, 18);
+  assert.equal(s.summons.length, 1);
+});
+
+test('enemy turn: attacks nearest player, summon absorbs hit', () => {
+  const mob = { ...createMob('pyria', 'easy', { q: 0, r: 0 }), pos: { q: 0, r: 0 } };
+  const near = { ch: { ...createCharacter(CHAMPIONS.achilles) }, pos: { q: 1, r: 0 }, summons: [{ hp: 1, turns: 2 }] };
+  const far = { ch: { ...createCharacter(CHAMPIONS.medea) }, pos: { q: 5, r: 0 }, summons: [] };
+  // d6 behaviour 1 (basic), attack dice 6,6 = crit, damage die 3
+  const r = enemyTurn(fixed(1, 6, 6, 3), mob, [far, near]);
+  assert.equal(r.action, 'basic');
+  assert.equal(r.targetIndex, 1);
+  assert.equal(r.result.absorbed, true);
+  assert.equal(r.targets[1].ch.hp, near.ch.hp);
+  assert.equal(r.targets[1].summons.length, 0);
+  // no summon: damage lands
+  const r2 = enemyTurn(fixed(1, 6, 6, 3), mob, [{ ...near, summons: [] }]);
+  assert.ok(r2.targets[0].ch.hp < near.ch.hp);
+  assert.equal(mobStats(1).maxHp, 23);
+});
