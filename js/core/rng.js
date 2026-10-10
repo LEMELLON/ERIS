@@ -47,3 +47,14 @@ export const getRngState = () => shared.getState();
 export const setRngState = s => shared.setState(s);
 export const setPhysicalQueue = q => { shared.physicalQueue = q; };
 export const getRoller = () => shared;
+
+// rollN(n, sides, label, group): roll n dice through the shared roller and return the SUM (e.g. rollN(2, 6) = 2d6).
+// Pass { list: true } as the 5th argument to get the individual dice array instead.
+export const rollN = (n, sides, label = '', group = null, opts = {}) => {
+  const dice = [];
+  for (let i = 0; i < n; i++) dice.push(shared.roll(sides, label, group));
+  return opts.list ? dice : dice.reduce((a, b) => a + b, 0);
+};
+
+// Aliases for older call sites. seed(n) reseeds the shared roller.
+export const seed = setSeed;
